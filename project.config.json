@@ -1,0 +1,21 @@
+{
+  "description": "影狼 · 弹踢道场（Sekiro 风踢球弹反抖音小游戏）",
+  "packOptions": {
+    "ignore": [
+      { "type": "folder", "value": "tests" },
+      { "type": "folder", "value": "harness" },
+      { "type": "folder", "value": "docs" }
+    ]
+  },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": false,
+    "minified": false
+  },
+  "compileType": "game",
+  "appid": "",
+  "projectname": "tt-kickball",
+  "libVersion": "latest",
+  "condition": {}
+}

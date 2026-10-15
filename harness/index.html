@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=450, initial-scale=1, user-scalable=no">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23d8a74a'/%3E%3C/svg%3E">
+<title>弹踢道场 · harness</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #05070f; height: 100%; }
+  body { display: flex; align-items: center; justify-content: center; }
+  #frame { width: 450px; height: 800px; box-shadow: 0 0 40px rgba(0,0,0,.8); }
+  canvas { display: block; width: 450px; height: 800px; touch-action: none; }
+</style>
+</head>
+<body>
+<div id="frame">
+  <canvas id="game" width="450" height="800"></canvas>
+</div>
+<script>
+/* ---- 极简 CommonJS 加载器（同步 XHR） ---- */
+const modules = {};
+function resolve(p, fromDir) {
+  const base = (fromDir || '').split('/').slice(0, -1);
+  p.split('/').forEach(seg => {
+    if (seg === '..') base.pop();
+    else if (seg !== '.' && seg !== '') base.push(seg);
+  });
+  return base.join('/');
+}
+function load(path, fromDir) {
+  const full = resolve(path, fromDir || '');
+  if (modules[full]) return modules[full].exports;
+  const m = { exports: {} };
+  modules[full] = m;
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', '/' + full, false);
+  xhr.send();
+  if (xhr.status !== 200) throw new Error('load fail ' + full + ' ' + xhr.status);
+  const fn = new Function('module', 'exports', 'require', '__dirname', xhr.responseText);
+  const localRequire = p => load(p, full);
+  fn(m, m.exports, localRequire, full.split('/').slice(0, -1).join('/'));
+  return m.exports;
+}
+
+/* ---- tt（抖音小游戏）浏览器 shim ---- */
+// ?sound=1  有声模式（用真实浏览器 AudioContext 跑通 W3C 音频路径）
+// ?strict=1 严格抖音契约：Touch 只给 identifier/screenX/screenY
+const Q = new URLSearchParams(location.search);
+const SOUND = Q.get('sound') === '1';
+const STRICT = Q.get('strict') === '1';
+const canvas = document.getElementById('game');
+const rectOf = () => canvas.getBoundingClientRect();
+function touchLike(e, id) {
+  const r = rectOf();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const t = { identifier: id != null ? id : 0, screenX: x, screenY: y };
+  if (!STRICT) { t.clientX = x; t.clientY = y; } // 真机抖音只保证 screenX/screenY
+  return t;
+}
+const startH = [], endH = [], cancelH = [], showH = [], hideH = [];
+globalThis.tt = {
+  getSystemInfoSync: () => ({ windowWidth: 450, windowHeight: 800, pixelRatio: 1 }),
+  createCanvas: () => canvas,
+  onTouchStart: h => startH.push(h),
+  onTouchEnd: h => endH.push(h),
+  onTouchCancel: h => cancelH.push(h),
+  onShow: h => showH.push(h),
+  onHide: h => hideH.push(h),
+  // 默认静音（自动化连推数千帧避免 WebAudio 排队）；?sound=1 走真实音频
+  getAudioContext: () => {
+    if (!SOUND) throw new Error("muted in harness");
+    return new AudioContext();
+  },
+  // 测试钩子：tt._life.show()/hide() 手动触发生命周期
+  _life: {
+    show: () => showH.forEach(h => h()),
+    hide: () => hideH.forEach(h => h()),
+  },
+};
+function dispatch(list, ev) { list.forEach(h => h(ev)); }
+canvas.addEventListener('mousedown', e => { e.preventDefault(); dispatch(startH, { changedTouches: [touchLike(e)] }); });
+window.addEventListener('mouseup', e => dispatch(endH, { changedTouches: [touchLike(e)] }));
+canvas.addEventListener('touchstart', e => { e.preventDefault(); dispatch(startH, { changedTouches: [].map.call(e.changedTouches, t => touchLike(t, t.identifier)) }); }, { passive: false });
+window.addEventListener('touchend', e => dispatch(endH, { changedTouches: [].map.call(e.changedTouches, t => touchLike(t, t.identifier)) }));
+
+/* ---- 启动小游戏 ---- */
+load('js/main.js');
+</script>
+</body>
+</html>
