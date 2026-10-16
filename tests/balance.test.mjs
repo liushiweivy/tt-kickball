@@ -56,8 +56,9 @@ function mashKickBot(g) {
   g.press("kick");
 }
 
-test("skilled bot：三个种子全部通关，剩余血量 > 30", () => {
-  for (const seed of [1, 7, 42]) {
+// rollDashDir 会消耗 rng 改变后续发球序列，种子覆盖多一些防单一流水翻车
+test("skilled bot：8 个种子全部通关，剩余血量 > 30", () => {
+  for (const seed of [1, 7, 42, 13, 99, 2026, 314, 2718]) {
     const { g, seconds } = run(seed, skilledBot);
     assert.equal(g.mode, "victory", `seed=${seed} mode=${g.mode} hp=${g.player.hp} wave=${g.waveIndex} t=${seconds.toFixed(1)}s`);
     assert.ok(g.player.hp > 30, `seed=${seed} 残血 ${g.player.hp}，三波不应如此伤`);
@@ -78,5 +79,5 @@ test("站桩 bot：不踢不闪，敌人到玩家死都没掉过血（踢球是�
   const { g } = run(7, () => {});
   assert.equal(g.mode, "death");
   assert.equal(g.stats.perfectKicks, 0);
-  assert.equal(g.enemy.hp, 60);
+  assert.equal(g.enemy.hp, 120);
 });

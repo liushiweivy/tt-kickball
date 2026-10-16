@@ -4,7 +4,9 @@
     "ignore": [
       { "type": "folder", "value": "tests" },
       { "type": "folder", "value": "harness" },
-      { "type": "folder", "value": "docs" }
+      { "type": "folder", "value": "docs" },
+      { "type": "folder", "value": "tools" },
+      { "type": "folder", "value": "shots" }
     ]
   },
   "setting": {

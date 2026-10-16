@@ -61,6 +61,16 @@
     STAGGER_TIME: 2.5,
     DEAD_HOLD: 1.0,
     RISE_TIME: 1.1,
+    // 狗熊哆嗦毛（连击大招）：连续 3 次同类完美招式触发，手舞足蹈 5s 全弹回
+    COMBO_NEED: 3,
+    // 踢连击闸门：接触时 kickAge≤0.08s（球贴身约 50px/1cm 内按踢）。只管时机
+    // 不管横向——旧版 |dx|≤12px（≈3mm）对齐闸门已删；0.08 实测乱按 20 局 0 触发
+    COMBO_KICK_WINDOW: 0.08,
+    // 完美闪身距离：按下时来球在 128px（≈3cm）内。0.2s 无敌帧最多迎上 123px
+    //（455 速），故穿到球的闪身必在此距离内按下；远了才闪=空闪断链
+    DASH_PERFECT_PX: 128,
+    FLAIL_KICK_HP: 5,  // 大招弹回伤害（完美踢 9 的一半；架势/处决不打折）
+    FLAIL_TIME: 5,
     // 瞄准散布
     AIM_JITTER: 30,
     AIM_JITTER_BOSS: 20,
@@ -69,7 +79,7 @@
   // 三波：interval 发球节奏 / ballSpeed 球速 / cast 预警时长 /
   // comboChance 连射概率 / perilChance 危球概率 / drift 敌人横向漂移速度
   var WAVES = [
-    { sub: "第一阵", name: "落武者", hp: [60], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46 },
+    { sub: "第一阵", name: "落武者", hp: [120], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46 },
     { sub: "第二阵", name: "苇名流剑士", hp: [80], interval: 1.15, ballSpeed: 385, cast: 0.62, comboChance: 0.45, perilChance: 0, drift: 60 },
     { sub: "主将战", name: "武士大将 · 赤甲", hp: [90, 76], interval: 1.0, ballSpeed: 455, cast: 0.55, comboChance: 0.5, perilChance: 0.35, drift: 70 },
   ];
@@ -97,7 +107,7 @@
       x: CFG.WORLD_W / 2,
       hp: CFG.MAX_HP,
       posture: 0,
-      state: "idle", // idle|dash|hurt|break
+      state: "idle", // idle|dash|hurt|break|flail
       stateT: 0,
       heldDir: 0,
       dashDir: 0,
@@ -106,6 +116,12 @@
       kickCd: 0,     // 踢冷却
       kickAnim: 0,   // 踢腿动画计时
       postDelay: 0,
+      comboType: "",  // 当前连击链：""|"kick"|"dash"
+      comboN: 0,      // 当前链长度（换招/蹩脚踢/受伤/空闪/早闪清零）
+      // 本次闪身处置记录：按下时按球距预定品质（2–3cm 内=完美），穿到球才生效；
+      // 同闪多球只判一次；走完没处置=空闪断链
+      dashScored: false,
+      dashPerfect: false, // 按下瞬间预定的品质（首次穿球复用，不重算）
     };
   }
 
@@ -124,7 +140,8 @@
     this.shake = 0;
     this.banner = null;
     this.stats = {
-      perfectKicks: 0, lowKicks: 0, dashThroughs: 0,
+      perfectKicks: 0, lowKicks: 0, dashThroughs: 0, perfectDashes: 0,
+      flailBounces: 0,
       returnHits: 0, kills: 0, clearT: 0,
     };
   }
@@ -138,7 +155,8 @@
     this.fx = [];
     this.floatTexts = [];
     this.stats = {
-      perfectKicks: 0, lowKicks: 0, dashThroughs: 0,
+      perfectKicks: 0, lowKicks: 0, dashThroughs: 0, perfectDashes: 0,
+      flailBounces: 0,
       returnHits: 0, kills: 0, clearT: 0,
     };
     this.spawnWave(0);
@@ -189,8 +207,8 @@
     if (this.mode !== "fight") return;
     var p = this.player;
     if (action === "kick") {
-      // 崩体 / 受伤中不能踢；冷却内按键被吞掉（不刷新窗口）
-      if (p.state === "break" || p.state === "hurt") return;
+      // 崩体 / 受伤 / 手舞足蹈中不能踢；冷却内按键被吞掉（不刷新窗口）
+      if (p.state === "break" || p.state === "hurt" || p.state === "flail") return;
       if (p.kickCd > 0) return;
       p.kickAge = 0;
       p.kickCd = CFG.KICK_COOLDOWN;
@@ -203,9 +221,107 @@
       p.state = "dash";
       p.stateT = 0;
       p.invuln = CFG.DASH_INVULN;
-      p.dashDir = this.held.left ? -1 : this.held.right ? 1 : 0;
+      // 按住方向听玩家的；没按方向则花鼓灯式随机左/右闪（不原地顿步）
+      var heldDir = this.held.left ? -1 : this.held.right ? 1 : 0;
+      p.dashDir = heldDir !== 0 ? heldDir : this.rollDashDir();
+      // 招式名与起步 whoosh 同步出字（穿球时不再刷同名飘字）；寿命短，连闪不糊屏
+      this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "闪身步", "#7fe4ef", 22, 0.7);
       this.events.push("dash");
+      // 品质在首次穿球时按按下瞬间球距反推；空闪（一球未处置）走完时断连击
+      p.dashScored = false; p.dashPerfect = false;
     }
+  };
+
+  /* ---------- 连击 / 狗熊哆嗦毛大招 ---------- */
+
+  // 同类招式累加连击，换招从 1 重数；凑满 COMBO_NEED 发大招
+  Game.prototype.bumpCombo = function (type) {
+    var p = this.player;
+    if (p.state === "flail") return;
+    p.comboN = p.comboType === type ? p.comboN + 1 : 1;
+    p.comboType = type;
+    if (p.comboN >= CFG.COMBO_NEED) this.startFlail();
+  };
+
+  // 蹩脚踢 / 受伤 / 空闪 / 早闪：连击链作废
+  Game.prototype.resetCombo = function () {
+    this.player.comboType = "";
+    this.player.comboN = 0;
+  };
+
+  // 闪身首次穿球结算：按球速/闪身速度反推按下瞬间球与玩家距离（≤128px=完美）。
+  // 完美：Perfect 飘字+风铃音+连击；侥幸穿 = 断链。同闪多球只判一次。
+  // silent=危球分支沿用自己的飘字；返回品质
+  Game.prototype.scoreDashThrough = function (b, silent) {
+    var p = this.player;
+    if (p.dashScored) return p.dashPerfect;
+    p.dashScored = true;
+    var t = p.stateT;
+    var px0 = p.x - p.dashDir * CFG.DASH_SPEED * t; // 反推按下瞬间位置
+    var bx0 = b.x - (b.vx || 0) * t;
+    var by0 = b.y - b.vy * t;
+    var dx = bx0 - px0;
+    var dy = by0 - CFG.PLAYER_Y;
+    p.dashPerfect = dx * dx + dy * dy <= CFG.DASH_PERFECT_PX * CFG.DASH_PERFECT_PX;
+    if (p.dashPerfect) {
+      this.stats.perfectDashes++;
+      // -150：第三次同帧的「狗熊哆嗦毛！」在 -104，错开避免贴脸
+      if (!silent) this.spawnFloat(p.x, CFG.PLAYER_Y - 150, "Perfect!", "#ffe9a8", 24, 0.8);
+      this.events.push("perfectDash");
+      this.bumpCombo("dash");
+      return true;
+    }
+    this.resetCombo();
+    return false;
+  };
+
+  Game.prototype.startFlail = function () {
+    var p = this.player;
+    p.state = "flail";
+    p.stateT = 0;
+    p.invuln = CFG.FLAIL_TIME;
+    p.comboType = "";
+    p.comboN = 0;
+    this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "狗熊哆嗦毛！", "#ffa84b", 28, 1.3);
+    this.events.push("flail");
+  };
+
+  // 无方向闪身的选边：一侧放不下一个闪身步时强制开阔侧（活动宽 382 >
+  // 闪身步长 156.8，不可能两侧都不足）；否则排除「无敌帧结束后的尾段
+  // （0.2–0.28s）会把人送进在飞球」的一侧——随机方向是系统替玩家掷的，
+  // 不能让玩家为非自愿的尾段暴露买单。两侧都安全才掷币。
+  Game.prototype.rollDashDir = function () {
+    var move = CFG.DASH_SPEED * CFG.DASH_TIME;
+    var leftRoom = this.player.x - CFG.MARGIN;
+    var rightRoom = CFG.WORLD_W - CFG.MARGIN - this.player.x;
+    var canL = leftRoom >= move;
+    var canR = rightRoom >= move;
+    if (!canL) return 1;
+    if (!canR) return -1;
+    var safeL = !this.dashTailHitsBall(-1);
+    var safeR = !this.dashTailHitsBall(1);
+    if (safeL && !safeR) return -1;
+    if (safeR && !safeL) return 1;
+    return this.rng() < 0.5 ? -1 : 1;
+  };
+
+  // 预测：沿 dir 闪身时，无敌帧结束后的尾段是否与某颗下行球交汇。
+  // 尾段仅 0.08s，8 个采样步（0.01s）远小于球穿带时间（≥0.14s），
+  // 不会漏检；只判定与 resolveIncoming 相同的碰撞盒。
+  Game.prototype.dashTailHitsBall = function (dir) {
+    var p = this.player, x0 = p.x;
+    for (var i = 0; i < this.balls.length; i++) {
+      var b = this.balls[i];
+      if (b.dead || b.dir !== "down") continue;
+      for (var k = 0; k <= 8; k++) {
+        var t = CFG.DASH_INVULN + (CFG.DASH_TIME - CFG.DASH_INVULN) * (k / 8);
+        var px = clamp(x0 + dir * CFG.DASH_SPEED * t, CFG.MARGIN, CFG.WORLD_W - CFG.MARGIN);
+        if (Math.abs(px - (b.x + b.vx * t)) > CFG.HIT_HALF_W) continue;
+        var by = b.y + b.vy * t;
+        if (by >= CFG.PLAYER_Y - CFG.HIT_HALF_H && by <= CFG.PLAYER_Y + CFG.HIT_HALF_H) return true;
+      }
+    }
+    return false;
   };
 
   /* ---------- 特效 ---------- */
@@ -227,12 +343,16 @@
     this.fx.push({ kind: "ring", x: x, y: y, t: 0, life: 0.34, color: color });
   };
 
-  // 招式名飘字（花鼓灯梗：闪身步 / 浪子踢球 / 哆嗦毛）
-  Game.prototype.spawnFloat = function (x, y, text, color, size) {
+  // 招式名飘字（花鼓灯梗：闪身步 / 浪子踢球 / 狗熊哆嗦毛 / 黑虎掏心）
+  Game.prototype.spawnFloat = function (x, y, text, color, size, life) {
+    var s = size || 22;
+    // 全角字宽≈字号，按实际字串半宽 + 6px 安全边夹取（固定 64 会让
+    // 140px 宽的「黑虎掏心！」贴墙时溢出约 6px 被裁切）
+    var halfW = (text.length * s) / 2 + 6;
     this.floatTexts.push({
-      // 最宽飘字约 120px（半宽 60），横向夹取防止贴墙时出屏被裁切
-      x: clamp(x, 64, CFG.WORLD_W - 64), y: y, text: text, t: 0, life: 0.95,
-      color: color, size: size || 22,
+      x: clamp(x, halfW, CFG.WORLD_W - halfW), y: y, text: text, t: 0,
+      life: life != null ? life : 0.95,
+      color: color, size: s,
     });
   };
 
@@ -297,12 +417,13 @@
     if (p.invuln > 0) p.invuln -= dt;
     p.heldDir = this.held.left ? -1 : this.held.right ? 1 : 0;
 
-    // 架势满立即崩（优先于本帧架势回复）
-    if (p.posture >= CFG.MAX_POSTURE && p.state !== "break") {
+    // 架势满立即崩（优先于本帧架势回复）；大招进行中不会挨打/涨架势，双保险不打断
+    if (p.posture >= CFG.MAX_POSTURE && p.state !== "break" && p.state !== "flail") {
       p.state = "break";
       p.stateT = 0;
       p.posture = CFG.MAX_POSTURE;
-      this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "哆嗦毛…", "#ff8a7a", 18);
+      // 全名「狗熊哆嗦毛！」已让给三连击大招，崩架势只配半截「哆嗦毛…」
+      this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "哆嗦毛…", "#ff8a7a", 20, 1.15);
       this.events.push("break");
     }
     if (p.postDelay > 0) p.postDelay -= dt;
@@ -316,7 +437,12 @@
         break;
       case "dash":
         p.x += p.dashDir * CFG.DASH_SPEED * dt;
-        if (p.stateT >= CFG.DASH_TIME) { p.state = "idle"; p.stateT = 0; }
+        if (p.stateT >= CFG.DASH_TIME) {
+          // 走完整个闪身没穿到球 = 随便乱闪，连击作废
+          if (!p.dashScored) this.resetCombo();
+          p.state = "idle";
+          p.stateT = 0;
+        }
         break;
       case "hurt":
         if (p.stateT >= CFG.HURT_PLAYER) { p.state = "idle"; p.stateT = 0; }
@@ -324,6 +450,11 @@
       case "break":
         p.posture = CFG.MAX_POSTURE;
         if (p.stateT >= CFG.BREAK_TIME) { p.posture = 0; p.state = "idle"; p.stateT = 0; }
+        break;
+      case "flail":
+        // 手舞足蹈钉在原地（不走 idle 移动分支），持续无敌；来球由 resolveIncoming 弹回
+        p.invuln = Math.max(0, CFG.FLAIL_TIME - p.stateT);
+        if (p.stateT >= CFG.FLAIL_TIME) { p.invuln = 0; p.state = "idle"; p.stateT = 0; }
         break;
     }
     p.x = clamp(p.x, CFG.MARGIN, CFG.WORLD_W - CFG.MARGIN);
@@ -462,9 +593,43 @@
     this.balls = this.balls.filter(function (b) { return !b.dead; });
   };
 
+  // 把来球改写成朝敌人飞回的反弹球（完美踢与狗熊哆嗦毛共用同一条轨迹）
+  Game.prototype.bounceBallUp = function (b) {
+    var p = this.player, e = this.enemy;
+    var dx = e.x - p.x;
+    var dy = CFG.ENEMY_Y - CFG.PLAYER_Y;
+    var len = Math.sqrt(dx * dx + dy * dy);
+    var speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy) * CFG.RETURN_SPEED_MUL;
+    b.dead = false;
+    b.dir = "up";
+    b.returned = true;
+    b.x = p.x;
+    b.y = CFG.PLAYER_Y - 26;
+    b.vx = (dx / len) * speed;
+    b.vy = (dy / len) * speed;
+  };
+
+  // 狗熊哆嗦毛弹反：轨迹与完美踢相同（能掉血/涨架势/触发处决），
+  // 但不计完美踢统计、不刷「浪子踢球」飘字，只给金橙火花
+  Game.prototype.flailBounce = function (b) {
+    var cx = b.x, cy = b.y;
+    this.bounceBallUp(b);
+    b.flail = true; // resolveReturnHit 据此伤害减半（轨迹与完美踢一致）
+    this.stats.flailBounces++;
+    this.spawnRing(cx, cy, "#ffa84b");
+    this.spawnSparks(cx, cy, 10, "#ffc46b", 0.9);
+    this.events.push("flailBounce");
+  };
+
   Game.prototype.resolveIncoming = function (b) {
     var p = this.player;
     var cx = b.x, cy = b.y;
+
+    // 狗熊哆嗦毛：手舞足蹈期间来什么球都原样弹回（危球也不例外）
+    if (p.state === "flail") {
+      this.flailBounce(b);
+      return;
+    }
 
     // 危球：踢无效，只能无敌帧穿
     if (b.kind === "peril") {
@@ -472,7 +637,13 @@
       if (p.invuln > 0) {
         this.stats.dashThroughs++;
         this.spawnSparks(cx, cy, 8, "#bcd8ff", 0.7);
-        this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "闪身步！", "#7fe4ef", 24);
+        // 完美弹金色 Perfect（避让起步「闪身步」与同帧大招名）；早闪只配「闪身步！」
+        var perfect = this.scoreDashThrough(b, true);
+        if (perfect) {
+          this.spawnFloat(p.x, CFG.PLAYER_Y - 150, "Perfect!", "#ffe9a8", 24, 0.8);
+        } else {
+          this.spawnFloat(p.x, CFG.PLAYER_Y - 132, "闪身步！", "#7fe4ef", 24);
+        }
         this.events.push("perilDash");
       } else {
         this.damagePlayer(CFG.PERIL_HP, CFG.PERIL_P_POST, true);
@@ -482,44 +653,41 @@
 
     // 完美踢：金球反弹
     if (p.state !== "break" && p.kickAge <= CFG.KICK_PERFECT) {
-      b.dead = false;
-      b.dir = "up";
-      b.returned = true;
-      var e = this.enemy;
-      var dx = e.x - p.x;
-      var dy = CFG.ENEMY_Y - CFG.PLAYER_Y;
-      var len = Math.sqrt(dx * dx + dy * dy);
-      var speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy) * CFG.RETURN_SPEED_MUL;
-      b.x = p.x; b.y = CFG.PLAYER_Y - 26;
-      b.vx = (dx / len) * speed;
-      b.vy = (dy / len) * speed;
+      // 闪身途中球被残留踢窗处理：闪身尽到了处置义务，收尾不算空闪
+      if (p.state === "dash") p.dashScored = true;
+      this.bounceBallUp(b);
       this.spawnRing(cx, cy, "#ffe985");
       this.spawnSparks(cx, cy, 12, "#ffd98a", 1);
       this.shake = 0.18;
       this.stats.perfectKicks++;
       this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "浪子踢球！", "#ffd45e", 24);
       this.events.push("perfectKick");
+      // 贴脸 0.08s 内才计连击（横向不挑，碰撞带内踢中就算）
+      if (p.kickAge <= CFG.COMBO_KICK_WINDOW) this.bumpCombo("kick");
+      else this.resetCombo();
       return;
     }
 
     b.dead = true;
 
-    // 蹩脚踢：踢偏保命
+    // 蹩脚踢：踢偏保命，同时连击链作废
     if (p.state !== "break" && p.kickAge <= CFG.KICK_TOTAL) {
+      if (p.state === "dash") p.dashScored = true; // 同完美踢：处置过不算空闪
       p.posture += CFG.LOWKICK_P_POST;
       p.postDelay = CFG.P_POST_DELAY;
       this.spawnSparks(cx, cy, 7, "#cfd6e4", 0.6);
       this.stats.lowKicks++;
+      this.resetCombo();
       this.events.push("lowKick");
       return;
     }
 
-    // 闪身无敌帧：穿球
+    // 闪身无敌帧穿球：起步已报「闪身步」，这里只给火花+轻音，品质由 scoreDashThrough 判
     if (p.invuln > 0) {
       this.spawnSparks(cx, cy, 7, "#bcd8ff", 0.6);
       this.stats.dashThroughs++;
-      this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "闪身步", "#7fe4ef", 20);
       this.events.push("dashThrough");
+      this.scoreDashThrough(b);
       return;
     }
 
@@ -537,13 +705,16 @@
       e.hp = 0;
       this.spawnSparks(e.x, cy, 24, "#d4302f", 1.4);
       this.spawnRing(e.x, cy, "#ff5a4d");
+      // 敌人脚下方（ENEMY_Y-96 会撞顶部名字/血条 HUD），上升 39px 后仍在腿下
+      this.spawnFloat(e.x, CFG.ENEMY_Y + 140, "黑虎掏心！", "#ff5a4d", 28, 1.15);
       this.shake = 0.55;
       this.events.push("deathblow");
       this.killNode();
       return;
     }
 
-    e.hp -= CFG.KICK_HP;
+    // 狗熊哆嗦毛弹回的球伤害减半（架势/处决不打折）
+    e.hp -= b.flail ? CFG.FLAIL_KICK_HP : CFG.KICK_HP;
     e.posture += CFG.PERFECT_E_POST;
     e.postDelay = CFG.E_POST_DELAY;
     this.stats.returnHits++;
@@ -570,6 +741,7 @@
 
   Game.prototype.damagePlayer = function (hpDmg, postDmg, isPeril) {
     var p = this.player;
+    this.resetCombo(); // 挨揍了，连招断了
     p.hp -= hpDmg;
     p.posture += postDmg;
     p.postDelay = CFG.P_POST_DELAY;
@@ -607,8 +779,12 @@
     if (this.waveIndex + 1 < WAVES.length) {
       this.balls = [];
       this.spawnWave(this.waveIndex + 1);
-      this.player.state = "idle";
-      this.player.stateT = 0;
+      // 狗熊哆嗦毛是 5s 长状态：波次切换不打断（dash/hurt 等短状态照旧重置）。
+      // 弹回处决杀穿本波正是大招的高光时刻，切走既违背 5s 承诺又让姿态硬跳
+      if (this.player.state !== "flail") {
+        this.player.state = "idle";
+        this.player.stateT = 0;
+      }
     } else {
       this.mode = "victory";
       this.balls = []; // 结算遮罩下不留飞球

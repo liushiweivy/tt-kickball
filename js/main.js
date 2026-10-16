@@ -173,5 +173,5 @@ requestAnimationFrame(frame);
 
 // 调试 / 自动化钩子
 if (typeof globalThis !== "undefined") {
-  globalThis.__kickball = { game: game, CFG: core.CFG, WAVES: core.WAVES };
+  globalThis.__kickball = { game: game, CFG: core.CFG, WAVES: core.WAVES, audio: audio };
 }

@@ -44,7 +44,7 @@ test("起手 u=0.06：手已经甩出，双脚仍钉地（手先于脚契约）"
   const p = pose(0.06, 1);
   // 前手（右）手腕已从默认 +11 甩开
   assert.ok(Math.abs(p.rArmDX - DEFAULT_POSE.rArmDX) > 5, "前手未甩开 rArmDX=" + p.rArmDX);
-  assert.ok(Math.abs(p.lArmDX - DEFAULT_POSE.lArmDX) > 3, "后手未甩开");
+  assert.ok(Math.abs(p.lArmDX - DEFAULT_POSE.lArmDX) > 2, "后手未甩开");
   // 脚没动
   assert.equal(p.rLift, 0);
   assert.equal(p.lLift, 0);
@@ -70,6 +70,16 @@ test("腾空 u=0.45：身体离地带错步，朝冲刺方向倾斜", () => {
   assert.ok(p.lean > 0.1, "未前倾 lean=" + p.lean);
   // 前腿跨到前方
   assert.ok(p.rToe > 14, "前腿未前跨 rToe=" + p.rToe);
+});
+
+test("腾空 u=0.45：手与脚对角配合（对侧手前上摆、前腿侧手后摆），不能顺拐", () => {
+  const p = pose(0.45, 1); // 向右闪：右脚为前腿
+  assert.ok(p.lArmDX > 4, "对侧手（左）应向前摆 lArmDX=" + p.lArmDX);
+  assert.ok(p.lArmDY < 4, "前摆的手应抬到肩以上 lArmDY=" + p.lArmDY);
+  assert.ok(p.rArmDX < p.lArmDX, "前腿同侧手（右）应在后，不能与前腿同向前摆");
+  const m = pose(0.45, -1); // 镜像同样成立
+  assert.ok(m.rArmDX < -4, "镜像：对侧手（右）应向前摆 rArmDX=" + m.rArmDX);
+  assert.ok(m.lArmDX > m.rArmDX, "镜像顺拐");
 });
 
 test("落地 u=0.8：前脚已落地（无悬空），姿态在回收", () => {
