@@ -57,9 +57,8 @@ function dashOnce(g) {
   g.press("dash");
   step(g, 17);
 }
-/** 一次完美闪身（球快到了才闪）：贴身 40px 放球，第 2 帧进碰撞带时
- *  闪身年龄仅 0.033s（≤ 完美窗 0.12s）、位移 18.7px 仍在带内 → 完美穿球，
- *  再走完全程回 idle */
+/** 一次完美闪身（球贴身 2–3cm 内才闪）：贴身 40px 放球，按下瞬间球距
+ *  ≤128px → 完美穿球，再走完全程回 idle */
 function dashThroughOnce(g) {
   incoming(g, 40);
   g.press("dash");
@@ -341,7 +340,7 @@ test("闪身途中球被踢窗处理：不算空闪，不抹掉刚赚的踢球�
   g.press("dash");
   g.setHeld("right", false);
   const b = incoming(g, 37);
-  b.x = g.player.x + 9; // 第 1 帧贴身接触（踢中年龄 0.067s，在 0.12s 连击窗内）
+  b.x = g.player.x + 9; // 第 1 帧贴身接触（踢中年龄 0.067s，在 0.08s 连击窗内）
   step(g, 17); // 第 1 帧完美踢计连击；第 17 帧闪身走完不得空闪清零
   assert.equal(g.stats.perfectKicks, 1);
   assert.equal(g.stats.dashThroughs, 0, "球被踢窗处理，不算穿球");
@@ -384,6 +383,41 @@ test("完美闪身弹 Perfect 字样 + 音效事件（普通球/危球一致）�
   assert.ok(g2.seen.includes("perfectDash"), JSON.stringify(g2.seen));
   assert.ok(g2.seen.includes("perilDash"));
   assert.ok(g2.floatTexts.some((t) => t.text === "Perfect!"));
+});
+
+test("贴墙闪身不被位移 clamp 误判：真完美（球距 122px）照样 Perfect", () => {
+  const g = track(newGame());
+  g.player.x = CFG.MARGIN; // 贴左墙，向左闪全程被 clamp 在原地
+  g.setHeld("left", true);
+  incoming(g, 122, "normal", 0, 500); // 按下时球距 122 ≤128；约 0.18s 后入带，仍在无敌帧
+  g.press("dash");
+  g.setHeld("left", false);
+  step(g, 12);
+  assert.equal(g.stats.dashThroughs, 1, JSON.stringify(g.seen));
+  assert.equal(g.stats.perfectDashes, 1, "真完美不得因反推被墙放大而漏判");
+  assert.ok(g.floatTexts.some((t) => t.text === "Perfect!"), JSON.stringify(g.floatTexts.map((t) => t.text)));
+});
+
+test("闪身途中踢窗先处置普通球，同闪再穿危球：品质按真距离判定照样 Perfect", () => {
+  const g = track(newGame());
+  g.player.x = CFG.MARGIN; // 贴墙向左闪：玩家被 clamp 原地，球始终在廊道轴线上
+  g.setHeld("left", true);
+  g.press("kick"); // 残留完美踢窗 0.2s
+  g.press("dash"); // 紧接着闪身（球还未放出）
+  g.setHeld("left", false);
+  // 普通球已在带内：第 1 帧被残留踢窗完美踢掉，同时按真距离（≈25px）定下闪身品质
+  incoming(g, 25);
+  step(g, 1);
+  assert.equal(g.stats.perfectKicks, 1);
+  // 同一次闪身再穿一颗危球：按下瞬间虚拟球距约 63px（≤128），不得复用残留 false
+  g.balls.push({
+    x: g.player.x, y: CFG.PLAYER_Y - 56, vx: 0, vy: 455,
+    kind: "peril", dir: "down", dead: false,
+  });
+  step(g, 6);
+  assert.equal(g.stats.dashThroughs, 1);
+  assert.ok(g.floatTexts.some((t) => t.text === "Perfect!"), JSON.stringify(g.floatTexts.map((t) => t.text)));
+  assert.ok(!g.floatTexts.some((t) => t.text === "闪身步！"), "真完美不得弹早闪字样");
 });
 
 test("连击清零：中途换招/蹩脚踢/受伤后要重新数", () => {

@@ -63,11 +63,10 @@
     RISE_TIME: 1.1,
     // 狗熊哆嗦毛（连击大招）：连续 3 次同类完美招式触发，手舞足蹈 5s 全弹回
     COMBO_NEED: 3,
-    // 踢连击闸门：接触时 kickAge≤0.08s（球贴身约 50px/1cm 内按踢）。只管时机
-    // 不管横向——旧版 |dx|≤12px（≈3mm）对齐闸门已删；0.08 实测乱按 20 局 0 触发
+    // 踢连击：接触时 kickAge≤0.08s（贴身约 50px/1cm 内按踢），不管横向；
+    // 旧 |dx|≤12px（≈3mm）对齐闸门已删；0.08 实测乱按 20 局 0 触发
     COMBO_KICK_WINDOW: 0.08,
-    // 完美闪身距离：按下时来球在 128px（≈3cm）内。0.2s 无敌帧最多迎上 123px
-    //（455 速），故穿到球的闪身必在此距离内按下；远了才闪=空闪断链
+    // 完美闪身距离：按下时来球在 128px（≈3cm）内；0.2s 无敌帧至多迎 123px（455 速）
     DASH_PERFECT_PX: 128,
     FLAIL_KICK_HP: 5,  // 大招弹回伤害（完美踢 9 的一半；架势/处决不打折）
     FLAIL_TIME: 5,
@@ -76,8 +75,7 @@
     AIM_JITTER_BOSS: 20,
   };
 
-  // 三波：interval 发球节奏 / ballSpeed 球速 / cast 预警时长 /
-  // comboChance 连射概率 / perilChance 危球概率 / drift 敌人横向漂移速度
+  // 三波字段：interval 节奏/ballSpeed 球速/cast 预警/comboChance 连射/perilChance 危球/drift 横漂
   var WAVES = [
     { sub: "第一阵", name: "落武者", hp: [120], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46 },
     { sub: "第二阵", name: "苇名流剑士", hp: [80], interval: 1.15, ballSpeed: 385, cast: 0.62, comboChance: 0.45, perilChance: 0, drift: 60 },
@@ -97,9 +95,8 @@
 
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
-  // 蓄力鼓点节拍（返回 0/1/2/3）：内核鼓声与渲染三点指示灯共用同一公式。
-  // 不变量：castDur/3 必须大于单帧上限 0.05s（当前最短蓄力 0.34s，安全），
-  // 否则一个钳制大步可能整拍跳空、漏发鼓声。
+  // 蓄力鼓点节拍（0/1/2/3），内核鼓声与渲染三点灯共用。castDur/3 须 > 单帧
+  // 上限 0.05s（最短蓄力 0.34s，安全），否则钳制大步会整拍跳空漏鼓
   function telegraphBeat(stateT, castDur) { return Math.floor(stateT / (castDur / 3)); }
 
   function makePlayer() {
@@ -118,10 +115,10 @@
       postDelay: 0,
       comboType: "",  // 当前连击链：""|"kick"|"dash"
       comboN: 0,      // 当前链长度（换招/蹩脚踢/受伤/空闪/早闪清零）
-      // 本次闪身处置记录：按下时按球距预定品质（2–3cm 内=完美），穿到球才生效；
-      // 同闪多球只判一次；走完没处置=空闪断链
+      dashPressX: 0,   // 按下位置（防贴墙 clamp 反推失真）；首次处置按按下瞬间球距≤128px 定品质
       dashScored: false,
-      dashPerfect: false, // 按下瞬间预定的品质（首次穿球复用，不重算）
+      dashJudged: false,
+      dashPerfect: false,
     };
   }
 
@@ -227,8 +224,8 @@
       // 招式名与起步 whoosh 同步出字（穿球时不再刷同名飘字）；寿命短，连闪不糊屏
       this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "闪身步", "#7fe4ef", 22, 0.7);
       this.events.push("dash");
-      // 品质在首次穿球时按按下瞬间球距反推；空闪（一球未处置）走完时断连击
-      p.dashScored = false; p.dashPerfect = false;
+      // 品质在首次处置球时按按下瞬间球距反推；空闪走完时断连击
+      p.dashPressX = p.x; p.dashScored = false; p.dashJudged = false; p.dashPerfect = false;
     }
   };
 
@@ -249,21 +246,26 @@
     this.player.comboN = 0;
   };
 
-  // 闪身首次穿球结算：按球速/闪身速度反推按下瞬间球与玩家距离（≤128px=完美）。
-  // 完美：Perfect 飘字+风铃音+连击；侥幸穿 = 断链。同闪多球只判一次。
-  // silent=危球分支沿用自己的飘字；返回品质
+  // 按球速反推按下瞬间球与玩家距离（玩家读 dashPressX：贴墙 clamp 实际位移<名义位移）。同闪只判一次
+  Game.prototype.judgeDashPerfect = function (b) {
+    var p = this.player;
+    if (p.dashJudged) return p.dashPerfect;
+    p.dashJudged = true;
+    var t = p.stateT;
+    var dx = b.x - (b.vx || 0) * t - p.dashPressX;
+    var dy = b.y - b.vy * t - CFG.PLAYER_Y;
+    p.dashPerfect = dx * dx + dy * dy <= CFG.DASH_PERFECT_PX * CFG.DASH_PERFECT_PX;
+    return p.dashPerfect;
+  };
+
+  // 首次穿球结算：完美→Perfect+风铃音+连击，侥幸穿=断链；踢窗先处置过仅返品质；silent=危球用自己的飘字
   Game.prototype.scoreDashThrough = function (b, silent) {
     var p = this.player;
-    if (p.dashScored) return p.dashPerfect;
+    var first = !p.dashScored;
     p.dashScored = true;
-    var t = p.stateT;
-    var px0 = p.x - p.dashDir * CFG.DASH_SPEED * t; // 反推按下瞬间位置
-    var bx0 = b.x - (b.vx || 0) * t;
-    var by0 = b.y - b.vy * t;
-    var dx = bx0 - px0;
-    var dy = by0 - CFG.PLAYER_Y;
-    p.dashPerfect = dx * dx + dy * dy <= CFG.DASH_PERFECT_PX * CFG.DASH_PERFECT_PX;
-    if (p.dashPerfect) {
+    var perfect = this.judgeDashPerfect(b);
+    if (!first) return perfect;
+    if (perfect) {
       this.stats.perfectDashes++;
       // -150：第三次同帧的「狗熊哆嗦毛！」在 -104，错开避免贴脸
       if (!silent) this.spawnFloat(p.x, CFG.PLAYER_Y - 150, "Perfect!", "#ffe9a8", 24, 0.8);
@@ -286,8 +288,7 @@
     this.events.push("flail");
   };
 
-  // 无方向闪身的选边：一侧放不下一个闪身步时强制开阔侧（活动宽 382 >
-  // 闪身步长 156.8，不可能两侧都不足）；否则排除「无敌帧结束后的尾段
+  // 无方向闪身选边：一侧放不下闪身步时强制开阔侧；否则排除「无敌帧尾段
   // （0.2–0.28s）会把人送进在飞球」的一侧——随机方向是系统替玩家掷的，
   // 不能让玩家为非自愿的尾段暴露买单。两侧都安全才掷币。
   Game.prototype.rollDashDir = function () {
@@ -305,9 +306,8 @@
     return this.rng() < 0.5 ? -1 : 1;
   };
 
-  // 预测：沿 dir 闪身时，无敌帧结束后的尾段是否与某颗下行球交汇。
-  // 尾段仅 0.08s，8 个采样步（0.01s）远小于球穿带时间（≥0.14s），
-  // 不会漏检；只判定与 resolveIncoming 相同的碰撞盒。
+  // 预测沿 dir 闪身时无敌帧尾段是否与下行球交汇：8 个 0.01s 采样步
+  //（尾段 0.08s，远小于球穿带 ≥0.14s，不漏检），碰撞盒同 resolveIncoming
   Game.prototype.dashTailHitsBall = function (dir) {
     var p = this.player, x0 = p.x;
     for (var i = 0; i < this.balls.length; i++) {
@@ -653,8 +653,8 @@
 
     // 完美踢：金球反弹
     if (p.state !== "break" && p.kickAge <= CFG.KICK_PERFECT) {
-      // 闪身途中球被残留踢窗处理：闪身尽到了处置义务，收尾不算空闪
-      if (p.state === "dash") p.dashScored = true;
+      // 闪身途中球被残留踢窗处理：尽到处置义务（收尾不算空闪），并定下品质供同闪后续穿球复用
+      if (p.state === "dash") { p.dashScored = true; this.judgeDashPerfect(b); }
       this.bounceBallUp(b);
       this.spawnRing(cx, cy, "#ffe985");
       this.spawnSparks(cx, cy, 12, "#ffd98a", 1);
@@ -672,7 +672,7 @@
 
     // 蹩脚踢：踢偏保命，同时连击链作废
     if (p.state !== "break" && p.kickAge <= CFG.KICK_TOTAL) {
-      if (p.state === "dash") p.dashScored = true; // 同完美踢：处置过不算空闪
+      if (p.state === "dash") { p.dashScored = true; this.judgeDashPerfect(b); } // 同完美踢
       p.posture += CFG.LOWKICK_P_POST;
       p.postDelay = CFG.P_POST_DELAY;
       this.spawnSparks(cx, cy, 7, "#cfd6e4", 0.6);
