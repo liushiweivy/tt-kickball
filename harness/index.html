@@ -4,17 +4,44 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=450, initial-scale=1, user-scalable=no">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23d8a74a'/%3E%3C/svg%3E">
-<title>弹踢道场 · harness</title>
+<title>闪身步 · harness</title>
 <style>
   html, body { margin: 0; padding: 0; background: #05070f; height: 100%; }
   body { display: flex; align-items: center; justify-content: center; }
   #frame { width: 450px; height: 800px; box-shadow: 0 0 40px rgba(0,0,0,.8); }
   canvas { display: block; width: 450px; height: 800px; touch-action: none; }
+  /* ---- 修改器面板 ---- */
+  #dbg-toggle { position: fixed; top: 10px; right: 10px; z-index: 20; width: 40px; height: 40px;
+    border-radius: 50%; border: 1px solid #d8a74a; background: rgba(10,14,31,.85); color: #d8a74a;
+    font-size: 20px; cursor: pointer; }
+  #dbg { position: fixed; top: 58px; right: 10px; z-index: 20; width: 250px; padding: 10px 12px;
+    border: 1px solid #d8a74a; border-radius: 8px; background: rgba(10,14,31,.92); color: #e8ecf8;
+    font: 12px/1.6 sans-serif; display: none; max-height: 82vh; overflow-y: auto; }
+  #dbg.open { display: block; }
+  #dbg h3 { margin: 0 0 6px; font-size: 13px; color: #d8a74a; letter-spacing: 2px; }
+  #dbg label { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 3px 0; }
+  #dbg input { width: 76px; background: #10162e; color: #e8ecf8; border: 1px solid #3a4468;
+    border-radius: 4px; padding: 2px 5px; font: 12px sans-serif; }
+  #dbg .row { display: flex; gap: 6px; margin-top: 8px; }
+  #dbg button { flex: 1; background: #d8a74a; color: #10162e; border: 0; border-radius: 4px;
+    padding: 4px 0; font: 600 12px sans-serif; cursor: pointer; }
+  #dbg button.ghost { background: transparent; border: 1px solid #3a4468; color: #aeb8da; }
+  #dbg .tip { margin-top: 6px; color: #7c86a8; font-size: 11px; }
 </style>
 </head>
 <body>
 <div id="frame">
   <canvas id="game" width="450" height="800"></canvas>
+</div>
+<button id="dbg-toggle" title="修改器">⚙</button>
+<div id="dbg">
+  <h3>修 改 器</h3>
+  <div id="dbg-fields"></div>
+  <div class="row">
+    <button id="dbg-apply">保存并重开</button>
+    <button id="dbg-reset" class="ghost">恢复默认</button>
+  </div>
+  <div class="tip">判定类即时生效；血量/波次类点「保存并重开」生效。配置存 localStorage。</div>
 </div>
 <script>
 /* ---- 极简 CommonJS 加载器（同步 XHR） ---- */
@@ -85,6 +112,69 @@ window.addEventListener('touchend', e => dispatch(endH, { changedTouches: [].map
 
 /* ---- 启动小游戏 ---- */
 load('js/main.js');
+
+/* ---- 修改器：直改内核 CFG，localStorage 持久化 ---- */
+(function () {
+  const KB = globalThis.__kickball;
+  if (!KB) return;
+  const CFG = KB.CFG;
+  const STORE_KEY = 'kickball-debug-v1';
+  // 默认快照（首次打开时内核出厂值），恢复默认用
+  const FIELDS = [
+    ['DASH_PERFECT_PX', '完美闪身距离(px)'],
+    ['COMBO_KICK_WINDOW', '踢连击窗口(s)'],
+    ['COMBO_NEED', '大招连击数'],
+    ['KICK_PERFECT', '完美踢窗(s)'],
+    ['MAX_HP', '玩家血量'],
+    ['KICK_HP', '完美踢伤害'],
+    ['E_HP', '被白球命中伤'],
+    ['PERIL_HP', '被危球命中伤'],
+    ['BALL_SPEED_MUL', '球速倍率'],
+    ['FLAIL_TIME', '大招时长(s)'],
+    ['FLAIL_KICK_HP', '大招弹回伤害'],
+    ['PEBBLE_CD', '飞蝗石冷却(s)'],
+    ['PEBBLE_HP', '飞蝗石伤害'],
+  ];
+  const defaults = {};
+  FIELDS.forEach(([k]) => { defaults[k] = CFG[k]; });
+
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch (e) { /* 坏数据当没有 */ }
+  FIELDS.forEach(([k]) => { if (typeof saved[k] === 'number') CFG[k] = saved[k]; });
+
+  const box = document.getElementById('dbg-fields');
+  FIELDS.forEach(([k, label]) => {
+    const row = document.createElement('label');
+    row.innerHTML = '<span>' + label + '</span>';
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.step = k.includes('WINDOW') || k.includes('PERFECT') || k.includes('MUL') || k.includes('TIME') ? '0.01' : '1';
+    inp.value = CFG[k];
+    inp.dataset.key = k;
+    row.appendChild(inp);
+    box.appendChild(row);
+  });
+
+  document.getElementById('dbg-toggle').onclick = () =>
+    document.getElementById('dbg').classList.toggle('open');
+
+  document.getElementById('dbg-apply').onclick = () => {
+    const out = {};
+    box.querySelectorAll('input').forEach((inp) => {
+      const v = Number(inp.value);
+      if (Number.isFinite(v)) { CFG[inp.dataset.key] = v; out[inp.dataset.key] = v; }
+    });
+    localStorage.setItem(STORE_KEY, JSON.stringify(out));
+    KB.game.start(); // 血量/波次类重开生效
+  };
+
+  document.getElementById('dbg-reset').onclick = () => {
+    FIELDS.forEach(([k]) => { CFG[k] = defaults[k]; });
+    localStorage.removeItem(STORE_KEY);
+    box.querySelectorAll('input').forEach((inp) => { inp.value = defaults[inp.dataset.key]; });
+    KB.game.start();
+  };
+})();
 </script>
 </body>
 </html>

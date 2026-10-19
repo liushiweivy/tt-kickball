@@ -1,7 +1,7 @@
 /*
- * 弹踢道场 · 战斗模拟内核（无 DOM / wx 依赖，Node 可直接测试）
+ * 闪身步 · 弹踢道场 · 战斗模拟内核（无 DOM / wx 依赖，Node 可直接测试）
  *
- * 核心机制（只狼弹反 → 踢球改编）：
+ * 核心机制（弹反 → 踢球改编）：
  *   1. 敌人从顶部发球：普通球（白）可踢回，危球（红）只能闪身
  *   2. 踢三档：完美（贴身 0.20s 内，金球反弹，敌人掉血+架势）
  *      / 蹩脚（0.20–0.40s，球被踢偏保自己，自己涨架势）/ 裸吃
@@ -26,15 +26,15 @@
     DASH_TIME: 0.28,
     DASH_INVULN: 0.2,
     DASH_SPEED: 560,
-    // 生命 / 架势
-    MAX_HP: 100,
+    // 生命 / 架势（血量五倍制：玩家 500；敌人血量与踢伤同步 ×5，单阵节奏不变）
+    MAX_HP: 500,
     MAX_POSTURE: 100,
     // 踢
     KICK_PERFECT: 0.2,
     KICK_TOTAL: 0.4,
     KICK_COOLDOWN: 0.3,
     KICK_ANIM: 0.26,
-    KICK_HP: 9,            // 完美反弹命中伤害
+    KICK_HP: 45,           // 完美反弹命中伤害
     PERFECT_E_POST: 28,    // 完美反弹给敌人的架势
     LOWKICK_P_POST: 14,    // 蹩脚踢自己涨的架势
     RETURN_SPEED_MUL: 1.35,
@@ -63,23 +63,36 @@
     RISE_TIME: 1.1,
     // 狗熊哆嗦毛（连击大招）：连续 3 次同类完美招式触发，手舞足蹈 5s 全弹回
     COMBO_NEED: 3,
-    // 踢连击：接触时 kickAge≤0.08s（贴身约 50px/1cm 内按踢），不管横向；
-    // 旧 |dx|≤12px（≈3mm）对齐闸门已删；0.08 实测乱按 20 局 0 触发
-    COMBO_KICK_WINDOW: 0.08,
-    // 完美闪身距离：按下时来球在 128px（≈3cm）内；0.2s 无敌帧至多迎 123px（455 速）
-    DASH_PERFECT_PX: 128,
-    FLAIL_KICK_HP: 5,  // 大招弹回伤害（完美踢 9 的一半；架势/处决不打折）
+    // 踢连击：接触时 kickAge≤0.2s（=完美踢窗），即任何完美踢都计连击；
+    // 旧 0.08s 内圈窗对真人过严（踢球 3 次难触发大招），已放宽
+    COMBO_KICK_WINDOW: 0.2,
+    // 完美闪身距离：按下时来球在 427px（≈10cm，按 128px≈3cm 换算）内；
+    // 穿球与「盯球躲开」两条路径共用这条线定品质
+    DASH_PERFECT_PX: 427,
+    // 大招弹回只给象征性伤害：全弹回（含危球）本身已是奖励，不该再放大输出（架势/处决不打折）
+    FLAIL_KICK_HP: 10,
     FLAIL_TIME: 5,
     // 瞄准散布
     AIM_JITTER: 30,
     AIM_JITTER_BOSS: 20,
+    // 全局球速倍率（修改器调难度用，默认 1）
+    BALL_SPEED_MUL: 1,
+    // 飞蝗石（玩家自射小球）：10s 蓄能一颗，蚊子腿伤害——不涨架势/不打断敌人；踉跄中命中可忍杀
+    PEBBLE_CD: 10,
+    PEBBLE_HP: 5,
+    PEBBLE_SPEED: 640,
   };
 
-  // 三波字段：interval 节奏/ballSpeed 球速/cast 预警/comboChance 连射/perilChance 危球/drift 横漂
+  // 七阵字段：interval 节奏/ballSpeed 球速/cast 预警/comboChance 连射/perilChance 危球/drift 横漂
+  // 血量五倍制（KICK_HP 同步 ×5，单阵节奏与旧三阵一致）
   var WAVES = [
-    { sub: "第一阵", name: "落武者", hp: [120], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46 },
-    { sub: "第二阵", name: "苇名流剑士", hp: [80], interval: 1.15, ballSpeed: 385, cast: 0.62, comboChance: 0.45, perilChance: 0, drift: 60 },
-    { sub: "主将战", name: "武士大将 · 赤甲", hp: [90, 76], interval: 1.0, ballSpeed: 455, cast: 0.55, comboChance: 0.5, perilChance: 0.35, drift: 70 },
+    { sub: "第一阵", name: "巡场武生", hp: [600], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46 },
+    { sub: "第二阵", name: "疾风刀客", hp: [400], interval: 1.15, ballSpeed: 385, cast: 0.62, comboChance: 0.45, perilChance: 0, drift: 60 },
+    { sub: "主将战", name: "赤甲教头", hp: [450, 380], interval: 1.0, ballSpeed: 455, cast: 0.55, comboChance: 0.5, perilChance: 0.35, drift: 70 },
+    { sub: "第四阵", name: "夜鹞子", hp: [500], interval: 0.95, ballSpeed: 500, cast: 0.5, comboChance: 0.5, perilChance: 0.25, drift: 88 },
+    { sub: "第五阵", name: "铁猿双煞", hp: [400, 400], interval: 0.9, ballSpeed: 480, cast: 0.48, comboChance: 0.55, perilChance: 0.3, drift: 84 },
+    { sub: "第六阵", name: "危球天师", hp: [650], interval: 0.85, ballSpeed: 530, cast: 0.45, comboChance: 0.5, perilChance: 0.55, drift: 96 },
+    { sub: "宗师战", name: "镇场宗师 · 白眉", hp: [500, 450, 400], interval: 0.78, ballSpeed: 570, cast: 0.42, comboChance: 0.6, perilChance: 0.4, drift: 110 },
   ];
 
   function mulberry32(seed) {
@@ -115,10 +128,12 @@
       postDelay: 0,
       comboType: "",  // 当前连击链：""|"kick"|"dash"
       comboN: 0,      // 当前链长度（换招/蹩脚踢/受伤/空闪/早闪清零）
-      dashPressX: 0,   // 按下位置（防贴墙 clamp 反推失真）；首次处置按按下瞬间球距≤128px 定品质
+      dashPressX: 0,   // 按下位置（防贴墙 clamp 反推失真）；首次处置按按下瞬间球距≤DASH_PERFECT_PX 定品质
       dashScored: false,
       dashJudged: false,
       dashPerfect: false,
+      dashWatch: null, // 按下时盯住的在飞来球 {b, dist}：躲开它也算闪身成功
+      pebbleCd: 0,   // 飞蝗石蓄能计时（0=就绪可发）
     };
   }
 
@@ -138,7 +153,7 @@
     this.banner = null;
     this.stats = {
       perfectKicks: 0, lowKicks: 0, dashThroughs: 0, perfectDashes: 0,
-      flailBounces: 0,
+      flailBounces: 0, pebbleHits: 0,
       returnHits: 0, kills: 0, clearT: 0,
     };
   }
@@ -153,7 +168,7 @@
     this.floatTexts = [];
     this.stats = {
       perfectKicks: 0, lowKicks: 0, dashThroughs: 0, perfectDashes: 0,
-      flailBounces: 0,
+      flailBounces: 0, pebbleHits: 0,
       returnHits: 0, kills: 0, clearT: 0,
     };
     this.spawnWave(0);
@@ -190,6 +205,7 @@
       postDelay: 0,
     };
     this.player.x = CFG.WORLD_W / 2;
+    this.player.dashWatch = null; // 换阵清场，上一阵的盯球不再结算
     this.banner = { main: w.sub, sub: w.name, t: 1.8, tmax: 1.8, peril: false };
     this.events.push("wave");
   };
@@ -213,6 +229,14 @@
       this.events.push("kick");
       return;
     }
+    if (action === "pebble") {
+      // 飞蝗石：崩体/受伤/手舞足蹈中不能发；冷却中按下被吞（平时不管用）
+      if (p.state === "break" || p.state === "hurt" || p.state === "flail") return;
+      if (p.pebbleCd > 0) return;
+      p.pebbleCd = CFG.PEBBLE_CD;
+      this.firePebble();
+      return;
+    }
     if (action === "dash") {
       if (p.state !== "idle") return;
       p.state = "dash";
@@ -224,9 +248,76 @@
       // 招式名与起步 whoosh 同步出字（穿球时不再刷同名飘字）；寿命短，连闪不糊屏
       this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "闪身步", "#7fe4ef", 22, 0.7);
       this.events.push("dash");
-      // 品质在首次处置球时按按下瞬间球距反推；空闪走完时断连击
+      // 品质在按下瞬间定死，不等接触（否则乱按闪身能白嫖：最后一次按下总是近距离）：
+      //  有球且 ≤10cm 线：完美待命——穿到或躲开都弹 Perfect 并计连击
+      //  有球但 >线：早闪！立刻断连击并结算本闪（后续穿到也只算侥幸不给奖励）
+      //  没球：老规矩——走完没处置球 = 空闪断链；按下后生成的球接触仍按反推定品质
       p.dashPressX = p.x; p.dashScored = false; p.dashJudged = false; p.dashPerfect = false;
+      p.dashWatch = null;
+      var watch = this.pickDashWatch();
+      if (watch && watch.dist <= CFG.DASH_PERFECT_PX) {
+        p.dashWatch = watch;
+        p.dashJudged = true;
+        p.dashPerfect = true;
+      } else if (watch) {
+        p.dashJudged = true;
+        p.dashPerfect = false;
+        p.dashScored = true; // 早闪已按失败结算，走完不按空闪重复断链
+        this.resetCombo();
+      }
     }
+  };
+
+  // 盯球：找「最快越过玩家线」的下行球，记下按下瞬间直线距离。
+  // 敌人瞄原位发球，闪身移开后球大多落空——躲开它本来就是一次成功闪身。
+  // ETA 不设固定上限：球速倍率调低时 10cm 线内的慢球 ETA 可能 >1.8s，
+  // 固定上限会让它漏盯、与穿球路径共用 427 线定品质的承诺打架；品质由 dist 单线把关。
+  Game.prototype.pickDashWatch = function () {
+    var p = this.player;
+    var best = null, bestT = Infinity;
+    for (var i = 0; i < this.balls.length; i++) {
+      var b = this.balls[i];
+      if (b.dead || b.dir !== "down" || b.vy <= 0) continue;
+      var t = (CFG.PLAYER_Y + CFG.HIT_HALF_H - b.y) / b.vy;
+      if (t < 0 || t >= bestT) continue;
+      bestT = t;
+      best = b;
+    }
+    if (!best) return null;
+    var dx = best.x - p.x, dy = best.y - CFG.PLAYER_Y;
+    return { b: best, dist: Math.sqrt(dx * dx + dy * dy) };
+  };
+
+  // 盯球闪身结算：被盯的球越过玩家线且没打中 = 躲开成功（按下时已定完美，直接发奖）
+  Game.prototype.scoreDashDodge = function (b) {
+    var p = this.player;
+    if (!p.dashWatch || p.dashWatch.b !== b || p.dashScored) return;
+    // 崩架势/大招期间不结算（硬直中「赚连击」是语义瑕疵；大招本身就是奖励）
+    if (p.state === "break" || p.state === "flail") { p.dashWatch = null; return; }
+    p.dashWatch = null;
+    p.dashScored = true;
+    this.stats.dashThroughs++;
+    this.stats.perfectDashes++;
+    this.spawnSparks(b.x, CFG.PLAYER_Y, 6, "#bcd8ff", 0.5);
+    this.spawnFloat(p.x, CFG.PLAYER_Y - 150, "Perfect!", "#ffe9a8", 24, 0.8);
+    this.events.push("perfectDash");
+    this.events.push("dashThrough");
+    this.bumpCombo("dash");
+  };
+
+  // 飞蝗石：朝敌人自射一颗小球，蚊子腿伤害（不涨架势/不打断），踉跄中命中=忍杀
+  Game.prototype.firePebble = function () {
+    var p = this.player, e = this.enemy;
+    var dx = e.x - p.x;
+    var dy = CFG.ENEMY_Y - (CFG.PLAYER_Y - 26);
+    var len = Math.sqrt(dx * dx + dy * dy);
+    this.balls.push({
+      x: p.x, y: CFG.PLAYER_Y - 26,
+      vx: (dx / len) * CFG.PEBBLE_SPEED, vy: (dy / len) * CFG.PEBBLE_SPEED,
+      kind: "normal", dir: "up", dead: false, returned: false, pebble: true,
+    });
+    this.spawnFloat(p.x, CFG.PLAYER_Y - 120, "飞蝗石", "#cfe8ff", 16, 0.6);
+    this.events.push("pebble");
   };
 
   /* ---------- 连击 / 狗熊哆嗦毛大招 ---------- */
@@ -414,6 +505,7 @@
     p.kickAge += dt;
     p.kickAnim = Math.max(0, p.kickAnim - dt);
     if (p.kickCd > 0) p.kickCd -= dt;
+    if (p.pebbleCd > 0) p.pebbleCd -= dt;
     if (p.invuln > 0) p.invuln -= dt;
     p.heldDir = this.held.left ? -1 : this.held.right ? 1 : 0;
 
@@ -438,8 +530,9 @@
       case "dash":
         p.x += p.dashDir * CFG.DASH_SPEED * dt;
         if (p.stateT >= CFG.DASH_TIME) {
-          // 走完整个闪身没穿到球 = 随便乱闪，连击作废
-          if (!p.dashScored) this.resetCombo();
+          // 走完整个闪身没穿到球、也没盯到来球 = 随便乱闪，连击作废；
+          // 盯了球的等球越过玩家线再结算（球还飞着，不算空闪）
+          if (!p.dashScored && !p.dashWatch) this.resetCombo();
           p.state = "idle";
           p.stateT = 0;
         }
@@ -540,10 +633,11 @@
     var dx = tx - e.x;
     var dy = CFG.PLAYER_Y - CFG.ENEMY_Y;
     var len = Math.sqrt(dx * dx + dy * dy);
+    var spd = w.ballSpeed * (CFG.BALL_SPEED_MUL || 1);
     this.balls.push({
       x: e.x, y: CFG.ENEMY_Y + 14,
-      vx: (dx / len) * w.ballSpeed,
-      vy: (dy / len) * w.ballSpeed,
+      vx: (dx / len) * spd,
+      vy: (dy / len) * spd,
       kind: e.castKind, dir: "down", dead: false, returned: false,
     });
     this.events.push(e.castKind === "peril" ? "perilFire" : "fire");
@@ -578,6 +672,8 @@
           b.y >= CFG.PLAYER_Y - CFG.HIT_HALF_H &&
           b.y <= CFG.PLAYER_Y + CFG.HIT_HALF_H;
         if (hitP) { this.resolveIncoming(b); continue; }
+        // 越过玩家线还没碰到人：若本次闪身盯的是它 → 躲开成功，结算品质
+        if (b.y > CFG.PLAYER_Y + CFG.HIT_HALF_H) this.scoreDashDodge(b);
         if (b.y > CFG.WORLD_H + 24) { b.dead = true; this.events.push("miss"); }
       } else {
         if (e.state !== "rise" && e.state !== "dead" &&
@@ -596,6 +692,8 @@
   // 把来球改写成朝敌人飞回的反弹球（完美踢与狗熊哆嗦毛共用同一条轨迹）
   Game.prototype.bounceBallUp = function (b) {
     var p = this.player, e = this.enemy;
+    // 被盯的球改道弹回：「躲开」已无从谈起，盯球作废（完美踢/蹩脚踢已另行定品质）
+    if (p.dashWatch && p.dashWatch.b === b) p.dashWatch = null;
     var dx = e.x - p.x;
     var dy = CFG.ENEMY_Y - CFG.PLAYER_Y;
     var len = Math.sqrt(dx * dx + dy * dy);
@@ -700,7 +798,7 @@
     b.dead = true;
     var cy = CFG.ENEMY_Y;
 
-    // 踉跄中：忍杀，直接清空当前这管血
+    // 踉跄中：忍杀，直接清空当前这管血（飞蝗石也算——10s 蓄能攒的就是这一下）
     if (e.state === "stagger") {
       e.hp = 0;
       this.spawnSparks(e.x, cy, 24, "#d4302f", 1.4);
@@ -710,6 +808,16 @@
       this.shake = 0.55;
       this.events.push("deathblow");
       this.killNode();
+      return;
+    }
+
+    // 飞蝗石：蚊子腿伤害——不涨架势、不打断敌人动作（残血可收头）
+    if (b.pebble) {
+      e.hp -= CFG.PEBBLE_HP;
+      this.stats.pebbleHits++;
+      this.spawnSparks(b.x, cy, 5, "#cfe8ff", 0.5);
+      this.events.push("pebbleHit");
+      if (e.hp <= 0) { e.hp = 0; this.killNode(); }
       return;
     }
 
@@ -742,6 +850,7 @@
   Game.prototype.damagePlayer = function (hpDmg, postDmg, isPeril) {
     var p = this.player;
     this.resetCombo(); // 挨揍了，连招断了
+    p.dashWatch = null; // 盯球闪身作废：球没躲开
     p.hp -= hpDmg;
     p.posture += postDmg;
     p.postDelay = CFG.P_POST_DELAY;

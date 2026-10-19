@@ -26,9 +26,11 @@
   var H = 800;
 
   // 虚拟按键（逻辑坐标），main.js 用同一份布局做触摸命中
+  // 「石」= 飞蝗石，最小号放最左（10s 蓄能，平时不管用）；◀▶ 相应右移
   var BUTTONS = [
-    { id: "left", kind: "held", x: 66, y: 728, r: 38, label: "◀" },
-    { id: "right", kind: "held", x: 150, y: 728, r: 38, label: "▶" },
+    { id: "pebble", kind: "tap", x: 32, y: 728, r: 24, label: "石", font: "bold 16px sans-serif" },
+    { id: "left", kind: "held", x: 98, y: 728, r: 38, label: "◀" },
+    { id: "right", kind: "held", x: 182, y: 728, r: 38, label: "▶" },
     { id: "dash", kind: "tap", x: 298, y: 728, r: 42, label: "闪身" },
     { id: "kick", kind: "tap", x: 392, y: 728, r: 46, label: "踢" },
   ];
@@ -390,7 +392,9 @@
   /* ---------- 球 ---------- */
 
   function drawBall(ctx, b) {
-    var col = b.kind === "peril" ? COL.peril : b.returned ? COL.gold : COL.ball;
+    // 飞蝗石：冰蓝色小石子（半径 6，拖尾/光晕同步缩水）
+    var col = b.pebble ? "#cfe8ff" : b.kind === "peril" ? COL.peril : b.returned ? COL.gold : COL.ball;
+    var rad = b.pebble ? 6 : 11;
     var speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
     // 拖尾（沿速度反方向）
     for (var i = 3; i >= 1; i--) {
@@ -398,20 +402,20 @@
       ctx.globalAlpha = 0.12 * (4 - i);
       ctx.fillStyle = col;
       ctx.beginPath();
-      ctx.arc(b.x - b.vx * t, b.y - b.vy * t, 10 - i * 2, 0, Math.PI * 2);
+      ctx.arc(b.x - b.vx * t, b.y - b.vy * t, Math.max(1, rad - 1 - i * 2), 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
     ctx.save();
     ctx.shadowColor = col;
-    ctx.shadowBlur = b.returned ? 22 : 14;
+    ctx.shadowBlur = b.returned ? 22 : b.pebble ? 9 : 14;
     ctx.fillStyle = col;
     ctx.beginPath();
-    ctx.arc(b.x, b.y, 11, 0, Math.PI * 2);
+    ctx.arc(b.x, b.y, rad, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "rgba(255,255,255,0.75)";
     ctx.beginPath();
-    ctx.arc(b.x - 3, b.y - 3, 3.5, 0, Math.PI * 2);
+    ctx.arc(b.x - rad * 0.27, b.y - rad * 0.27, rad * 0.32, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -509,8 +513,20 @@
     ctx.fillStyle = "rgba(255,255,255,0.75)";
     ctx.font = "12px sans-serif";
     ctx.fillText("体", 24, 612);
-    bar(ctx, 42, 602, 190, 10, p.hp / 100, COL.hp);
+    bar(ctx, 42, 602, 190, 10, p.hp / CFG.MAX_HP, COL.hp);
     bar(ctx, 42, 616, 190, 6, p.posture / 100, COL.posture, "rgba(0,0,0,0.35)");
+
+    // 大招蓄能条：平时=三连击进度（踢金/闪青），哆嗦毛期间=剩余时间倒减（橙）
+    ctx.fillText("大招", 8, 637);
+    var ultRatio, ultCol;
+    if (p.state === "flail") {
+      ultRatio = Math.max(0, 1 - p.stateT / CFG.FLAIL_TIME);
+      ultCol = "#ffa84b";
+    } else {
+      ultRatio = p.comboN / CFG.COMBO_NEED;
+      ultCol = p.comboType === "dash" ? COL.dash : COL.gold;
+    }
+    bar(ctx, 42, 630, 190, 6, ultRatio, ultCol, "rgba(0,0,0,0.35)");
 
     // 统计
     ctx.textAlign = "right";
@@ -528,7 +544,8 @@
     for (var i = 0; i < BUTTONS.length; i++) {
       var b = BUTTONS[i];
       var on = pressed[b.id];
-      var accent = b.id === "kick" ? COL.gold : b.id === "dash" ? COL.dash : "#aeb8da";
+      var accent = b.id === "kick" ? COL.gold : b.id === "dash" ? COL.dash
+        : b.id === "pebble" ? "#cfe8ff" : "#aeb8da";
 
       ctx.save();
       ctx.globalAlpha = on ? 0.85 : 0.5;
@@ -550,10 +567,19 @@
         ctx.fillStyle = "rgba(0,0,0,0.45)";
         ctx.fill();
       }
+      // 飞蝗石蓄能扇形（10s 一颗，平时不管用=扇形盖满）
+      if (b.id === "pebble" && p.pebbleCd > 0) {
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y);
+        ctx.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + (p.pebbleCd / CFG.PEBBLE_CD) * Math.PI * 2);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fill();
+      }
       ctx.restore();
 
       ctx.fillStyle = on && b.kind === "held" ? "#10162e" : accent;
-      ctx.font = b.label.length > 1 ? "600 19px sans-serif" : "bold 24px sans-serif";
+      ctx.font = b.font || (b.label.length > 1 ? "600 19px sans-serif" : "bold 24px sans-serif");
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(b.label, b.x, b.y + 1);
@@ -586,10 +612,10 @@
     ctx.fillRect(0, 0, W, H);
   }
 
-  // 战功称号（花鼓灯梗）：无伤 = 王嘉尔口误「伞森步」；残血 = 鼓架子再练
+  // 战功称号（花鼓灯梗）：满血 = 王嘉尔口误「伞森步」；残血 = 鼓架子再练
   function victoryRank(hp) {
-    if (hp >= 100) return "称号 ·「伞森步 · 身法大成」";
-    if (hp >= 60) return "称号 ·「浪子踢球 · 名手」";
+    if (hp >= CFG.MAX_HP) return "称号 ·「伞森步 · 身法大成」";
+    if (hp >= CFG.MAX_HP * 0.6) return "称号 ·「浪子踢球 · 名手」";
     return "称号 ·「鼓架子还得再练」";
   }
 
@@ -599,22 +625,25 @@
       overlay(ctx, 0.72);
       ctx.fillStyle = "#f4ecd8";
       ctx.font = "bold 44px sans-serif";
-      ctx.fillText("影狼 · 弹踢道场", W / 2, 292);
+      ctx.fillText("闪 身 步", W / 2, 292);
       ctx.font = "14px KaiTi, STKaiti, serif";
       ctx.fillStyle = "rgba(127,228,239,0.85)";
-      ctx.fillText("—— 花鼓灯身法：闪身步 × 浪子踢球 ——", W / 2, 324);
+      ctx.fillText("—— 花鼓灯身法 · 弹踢道场 ——", W / 2, 324);
       ctx.font = "17px sans-serif";
       ctx.fillStyle = "rgba(255,255,255,0.8)";
       ctx.fillText("白球 ·「浪子踢球」贴身一瞬，金球反弹打敌", W / 2, 366);
       ctx.fillText("红球「危」· 踢不得，「闪身步」左右侧撤避过", W / 2, 396);
-      ctx.fillText("左下移动对齐，打穿三阵 · 赤甲两管血", W / 2, 426);
+      ctx.fillText("左下移动对齐，打穿七阵 · 宗师三管血", W / 2, 426);
       ctx.fillStyle = "rgba(255,168,75,0.9)";
       ctx.fillText("三连浪子踢球/三连完美闪身→狗熊哆嗦毛·5s全弹回", W / 2, 456);
+      ctx.fillStyle = "rgba(207,232,255,0.85)";
+      ctx.font = "15px sans-serif";
+      ctx.fillText("最左小钮「石」· 飞蝗石 10 秒一颗，破架势可忍杀", W / 2, 482);
       ctx.fillStyle = COL.gold;
       ctx.font = "600 22px sans-serif";
       var blink = 0.55 + 0.45 * Math.sin((g.time || 0) * 5);
       ctx.globalAlpha = blink;
-      ctx.fillText("点击屏幕 开 战", W / 2, 500);
+      ctx.fillText("点击屏幕 开 战", W / 2, 518);
       ctx.globalAlpha = 1;
     } else if (g.mode === "death") {
       overlay(ctx, 0.6);
@@ -644,13 +673,14 @@
       ctx.fillText("完美反弹 " + g.stats.perfectKicks + " 次", W / 2, 374);
       ctx.fillText("完美闪身 " + g.stats.perfectDashes + " 次", W / 2, 404);
       ctx.fillText("闪身穿球 " + g.stats.dashThroughs + " 次", W / 2, 434);
+      ctx.fillText("飞蝗石命中 " + g.stats.pebbleHits + " 次", W / 2, 464);
       // 称号（花鼓灯梗）：无伤 = 王嘉尔口误「伞森步」；残血 = 鼓架子再练
       var title2 = victoryRank(g.player.hp);
       ctx.fillStyle = COL.gold;
       ctx.font = "600 19px KaiTi, STKaiti, serif";
-      ctx.fillText(title2, W / 2, 474);
+      ctx.fillText(title2, W / 2, 500);
       ctx.font = "600 20px sans-serif";
-      ctx.fillText("点击屏幕 再战", W / 2, 516);
+      ctx.fillText("点击屏幕 再战", W / 2, 542);
     }
   }
 

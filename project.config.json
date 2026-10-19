@@ -1,5 +1,5 @@
 {
-  "description": "影狼 · 弹踢道场（Sekiro 风踢球弹反抖音小游戏）",
+  "description": "闪身步 · 弹踢道场（花鼓灯风踢球弹反抖音小游戏）",
   "packOptions": {
     "ignore": [
       { "type": "folder", "value": "tests" },

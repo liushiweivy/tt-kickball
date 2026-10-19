@@ -121,6 +121,8 @@
         case "hurt": noise(0.16, { cutoff: 700, vol: 0.22 }); tone(120, 0.16, { type: "sawtooth", vol: 0.12 }); break;
         case "perilHit": noise(0.3, { cutoff: 500, vol: 0.3 }); tone(90, 0.28, { type: "sawtooth", vol: 0.16 }); break;
         case "returnHit": tone(520, 0.16, { type: "triangle", vol: 0.18 }); noise(0.08, { cutoff: 3000, vol: 0.1 }); break;
+        case "pebble": noise(0.05, { cutoff: 4200, vol: 0.09 }); tone(880, 0.06, { type: "square", vol: 0.08 }); break; // 甩石子：短促破空
+        case "pebbleHit": tone(660, 0.07, { type: "triangle", vol: 0.09 }); break; // 蚊子腿：轻点小木鱼
         case "stagger":
           tone(1560, 0.1, { type: "sine", vol: 0.14 });
           tone(2080, 0.14, { type: "sine", vol: 0.12, delay: 0.08 });
