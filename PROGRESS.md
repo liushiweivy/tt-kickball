@@ -303,3 +303,11 @@ render-only，core.js 零改动。起因：除闪身（上一轮返工）外，�
 - **七阵改名**（数值零改动，WAVES 只动 name 字段）：落武者→巡场武生、苇名流剑士→疾风刀客、武士大将·赤甲→赤甲教头、寄鹰众·忍者→夜鹞子、双猿·鬼兄弟→铁猿双煞、道场宗师·白眉→镇场宗师·白眉；「危球天师」是自造词保留；招式名（浪子踢球/狗熊哆嗦毛/黑虎掏心）全花鼓灯原创不动
 - 测试：双端各 **74/74**（名字不进断言，纯文本替换零风险）；grep 校验 js/harness/README/config 无 影狼/只狼/Sekiro/落武者/苇名/寄鹰 残留
 - 真机目验：harness 标题页截图确认新主副标渲染正常
+
+## 2026-10-22（十三）狗熊哆嗦毛音效改花鼓灯鼓点（用户：「狗熊哆嗦毛的时候发出隆咚哐隆咚哐的声音」）
+
+- **audio.js（双端零差异）**：flail 音效从「8 下 155/196Hz 方波滑稽抖音 + 散噪 + 上扬滑音」改为「**隆·咚·哐**」循环鼓点铺满 FLAIL_TIME=5s：拍 0.17s、三拍一组 0.51s、10 组，末拍哐在 4.93s 尾音自然溢出
+  - 抽 `gu(delay, soft)`（隆=150→62Hz/vol.22 强拍，咚=185→78Hz/vol.14 弱拍，均 0.2s+鼓皮噪）与 `kuang(delay)`（680→280 金属 + 130→58 低鼓 + 锣面噪），case drum/fire 重构为调用二者，**敌人蓄力鼓点逐参数不变**
+- **测试**：tt **76/76**（新增 figure.test.mjs 后基线 74→74+2 音频用例；wx 无 figure 套件为 66/66）。audio.test.mjs 新增 mock AudioContext：锁三拍 delay 网格（含 30 噪声拍点必须与网格重合）、强弱拍音量分层；drum/fire 逐参数守卫（freq/freq2/vol/dur/噪声时长音量）。code-reviewer 提出两条 MEDIUM 已修：mock 原先 ramp 空操作测不到 vol/freq2、全局 AudioContext 污染使「无环境静默」用例依赖声明顺序（改 t.after 还原 + 用例开头显式 delete）
+- **真机**：headless Edge CDP（?sound=1）flail 实测 51 osc/33 buffer、0 page error，cdp-moves 断言阈值 8/1→40/30，顺手修陈旧 hp 断言 100→500（MAX_HP 早已 ×5）；有头 Edge 实放听感确认
+- **待办**：抖音真机/开发者工具里跑一次 flail——一次性前瞻排程约 140 节点（70 gain+40 osc+30 buffer）是此前未到过的量级，留意 tt.getAudioContext 子集与挂起恢复后 currentTime 跳变

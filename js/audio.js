@@ -78,6 +78,24 @@
 
     var MELODY = [523, 587, 659, 784, 880]; // 胜利：宫调式上行
 
+    // 花鼓灯低鼓「隆」（强拍）/「咚」（soft 弱拍，略高略轻）：膜音下滑 + 鼓皮噪
+    function gu(delay, soft) {
+      var d = delay || 0;
+      tone(soft ? 185 : 150, 0.2, { type: "sine", freq2: soft ? 78 : 62, vol: soft ? 0.14 : 0.22, delay: d });
+      noise(0.05, { cutoff: 380, vol: soft ? 0.08 : 0.12, delay: d });
+    }
+
+    // 花鼓灯大锣「哐」：金属高音 + 低频体量 + 爆点噪
+    function kuang(delay) {
+      var d = delay || 0;
+      tone(680, 0.12, { type: "sine", freq2: 280, vol: 0.07, delay: d });
+      tone(130, 0.18, { type: "sine", freq2: 58, vol: 0.16, delay: d });
+      noise(0.06, { cutoff: 500, vol: 0.1, delay: d });
+    }
+
+    // 大招鼓点拍间隔（三拍一组「隆·咚·哐」=0.51s）
+    var FLAIL_BEAT = 0.17;
+
     function onEvent(ev) {
       switch (ev) {
         case "kick": tone(170, 0.07, { type: "triangle", vol: 0.12 }); break;
@@ -105,13 +123,10 @@
           tone(2080, 0.12, { type: "sine", vol: 0.1, delay: 0.07 });
           break;
         case "drum": // 花鼓灯「隆·咚」：低鼓膜音 + 一记鼓皮噪声
-          tone(150, 0.2, { type: "sine", freq2: 62, vol: 0.22 });
-          noise(0.05, { cutoff: 380, vol: 0.12 });
+          gu(0, false);
           break;
         case "fire": // 第三拍「哐」：出球音本身落在鼓点上
-          tone(680, 0.12, { type: "sine", freq2: 280, vol: 0.07 });
-          tone(130, 0.18, { type: "sine", freq2: 58, vol: 0.16 });
-          noise(0.06, { cutoff: 500, vol: 0.1 });
+          kuang(0);
           break;
         case "peril":
         case "perilFire":
@@ -134,14 +149,18 @@
             tone(bi % 2 ? 108 : 76, 0.05, { type: "square", vol: 0.07, delay: bi * 0.05 });
           }
           break;
-        case "flail":
-          // 狗熊哆嗦毛大招发功：八下交替滑稽抖音 + 散噪 + 一记上扬滑音
-          noise(0.35, { cutoff: 1800, vol: 0.13 });
-          for (var fi = 0; fi < 8; fi++) {
-            tone(fi % 2 ? 196 : 155, 0.08, { type: "square", vol: 0.07, delay: fi * 0.09 });
+        case "flail": {
+          // 狗熊哆嗦毛大招：花鼓灯「隆·咚·哐」鼓点循环铺满 5s（CFG.FLAIL_TIME）。
+          // 拍 0.17s、一组 0.51s，10 组最后一记哐在 4.93s，尾音自然收在 5s 外。
+          var GROUPS = 10;
+          for (var fi = 0; fi < GROUPS; fi++) {
+            var g0 = fi * FLAIL_BEAT * 3;
+            gu(g0, false);                   // 隆（强）
+            gu(g0 + FLAIL_BEAT, true);       // 咚（弱）
+            kuang(g0 + FLAIL_BEAT * 2);      // 哐
           }
-          tone(520, 0.5, { type: "sawtooth", freq2: 820, vol: 0.04, delay: 0.1 });
           break;
+        }
         case "flailBounce":
           // 手舞足蹈弹飞来球：一记轻巧上挑 boing
           tone(420, 0.09, { type: "sine", freq2: 720, vol: 0.12 });

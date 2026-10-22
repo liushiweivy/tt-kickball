@@ -105,7 +105,8 @@ await sleep(80);
 await shot("move-deathblow.png");
 
 /* 4. 狗熊哆嗦毛大招：三次「完美闪身」（按下时球距 ≤128px/3cm）触发
-      → 飘「狗熊哆嗦毛！」+ 8 抖音滑稽音；手舞足蹈期间来球（含危球）全部弹回。
+      → 飘「狗熊哆嗦毛！」+ 花鼓灯「隆·咚·哐」循环鼓点（10 组：40 osc/30 buffer）；
+        手舞足蹈期间来球（含危球）全部弹回。
       冻 rAF 步进、手动逐帧确定性驱动，事件当场喂 audio 做节点计数 */
 const flailResult = await evalJs(`(function () {
   const K = __kickball.game, CFG = __kickball.CFG;
@@ -171,8 +172,8 @@ const ok =
   dbResult.texts.includes("黑虎掏心！") && dbResult.hp === 0 &&
   flailResult.state0 === "flail" && flailResult.perfectDashes === 3 &&
   flailResult.throughs === 3 && flailResult.texts.includes("狗熊哆嗦毛！") &&
-  flailAudio.osc >= 8 && flailAudio.buffer >= 1 &&
-  bounceResult.state === "flail" && bounceResult.hp === 100 &&
+  flailAudio.osc >= 40 && flailAudio.buffer >= 30 &&
+  bounceResult.state === "flail" && bounceResult.hp === 500 && // MAX_HP 已 ×5（500），弹回期间零掉血
   bounceResult.bounces === 2 && bounceResult.up === 2 &&
   errors.length === 0;
 console.log("page errors:", JSON.stringify(errors));
