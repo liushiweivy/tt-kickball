@@ -47,6 +47,37 @@
     dash: "#5fd0e0",
   };
 
+  // 四种新球种配色（普通族三色冷调可踢；回旋危球橙色=危球族但区别于红危球）
+  var KIND_COL = {
+    peril: COL.peril,
+    boomerang: "#ff8a3c",
+    curve: "#9fe870",
+    split: "#d8c8ff",
+    heavy: "#aab4cc",
+  };
+
+  // 选关界面：4 章 × 5 关网格（逻辑坐标），main.js 用同一份布局做触摸命中
+  var CHAPTERS = ["第一章 · 基本功", "第二章 · 危球识读", "第三章 · 花式弹反", "第四章 · 回旋绝杀"];
+  var SELECT_LAYOUT = [];
+  for (var si = 0; si < 20; si++) {
+    SELECT_LAYOUT.push({
+      i: si,
+      x: 65 + (si % 5) * 80,
+      y: 225 + Math.floor(si / 5) * 130, // 行距 130：章标题(14px alphabetic)与上行星星(12px middle)净距 ≥3px
+      r: 30,
+    });
+  }
+
+  // 结算遮罩按钮（矩形命中区）：胜利=下一关/选关，败北=重打/选关
+  var VICTORY_ZONES = [
+    { id: "next", x: W / 2 - 132, y: 588, w: 124, h: 52, label: "下一关" },
+    { id: "select", x: W / 2 + 8, y: 588, w: 124, h: 52, label: "选关" },
+  ];
+  var DEATH_ZONES = [
+    { id: "retry", x: W / 2 - 132, y: 500, w: 124, h: 52, label: "重打" },
+    { id: "select", x: W / 2 + 8, y: 500, w: 124, h: 52, label: "选关" },
+  ];
+
   function rr(ctx, x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -59,6 +90,15 @@
 
   function drawScene(ctx, g, view) {
     drawBackdrop(ctx, view);
+    // 选关界面：不画战斗世界（敌人/球可能处于冻结残态），整屏换成关卡网格
+    if (g.mode === "select") {
+      ctx.save();
+      ctx.translate(view.offX, view.offY);
+      ctx.scale(view.scale, view.scale);
+      drawSelect(ctx, g, view.progress || core.emptyProgress());
+      ctx.restore();
+      return;
+    }
     var sx = 0, sy = 0;
     if (g.shake > 0) {
       sx = (Math.random() - 0.5) * g.shake * 14;
@@ -301,8 +341,8 @@
   function drawTelegraph(ctx, e, x, y, time) {
     var castDur = e.castDur || 0.34; // core 保证 ≥0.34，render 侧兜底防 NaN
     var prog = Math.min(1, e.stateT / castDur);
-    var peril = e.castKind === "peril";
-    var col = peril ? COL.peril : COL.ball;
+    var perilous = e.castKind === "peril" || e.castKind === "boomerang";
+    var col = KIND_COL[e.castKind] || COL.ball;
     // 蓄力球从腰间托起、随进度举到胸前（避免贴脸；末位置仍是旧的 y-56）
     var hx = x, hy = y - 30 - 26 * prog;
     ctx.save();
@@ -316,7 +356,7 @@
     ctx.restore();
 
     var lit = Math.min(3, telegraphBeat(e.stateT, castDur) + 1);
-    var beatCol = peril ? COL.peril : COL.gold;
+    var beatCol = perilous ? col : COL.gold;
     for (var bi = 0; bi < 3; bi++) {
       ctx.beginPath();
       ctx.arc(hx - 22 + bi * 22, hy + 28, 4.5, 0, Math.PI * 2);
@@ -332,18 +372,18 @@
       ctx.shadowBlur = 0;
     }
 
-    if (peril) {
+    if (perilous) {
       ctx.save();
       ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 16);
-      ctx.strokeStyle = COL.peril;
+      ctx.strokeStyle = col;
       ctx.lineWidth = 3;
       rr(ctx, x - 26, y - 112, 52, 34, 6);
       ctx.stroke();
-      ctx.fillStyle = COL.peril;
+      ctx.fillStyle = col;
       ctx.font = "bold 24px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("危", x, y - 95);
+      ctx.fillText(e.castKind === "boomerang" ? "旋" : "危", x, y - 95);
       ctx.restore();
     }
   }
@@ -392,9 +432,12 @@
   /* ---------- 球 ---------- */
 
   function drawBall(ctx, b) {
-    // 飞蝗石：冰蓝色小石子（半径 6，拖尾/光晕同步缩水）
-    var col = b.pebble ? "#cfe8ff" : b.kind === "peril" ? COL.peril : b.returned ? COL.gold : COL.ball;
-    var rad = b.pebble ? 6 : 11;
+    // 飞蝗石：冰蓝色小石子（半径 6，拖尾/光晕同步缩水）；
+    // 新球种按 KIND_COL 配色，重球半径大一号；踢回的球一律金色（战果不认出身）
+    var col = b.pebble ? "#cfe8ff"
+      : b.returned ? COL.gold
+      : (KIND_COL[b.kind] || COL.ball);
+    var rad = b.pebble ? 6 : (b.r || 11);
     var speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
     // 拖尾（沿速度反方向）
     for (var i = 3; i >= 1; i--) {
@@ -586,6 +629,72 @@
     }
   }
 
+  /* ---------- 选关界面 ---------- */
+
+  // 三星小图标：实星金 / 空星暗
+  function drawStars(ctx, x, y, n, size) {
+    ctx.font = size + "px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (var i = 0; i < 3; i++) {
+      ctx.fillStyle = i < n ? COL.gold : "rgba(255,255,255,0.16)";
+      ctx.fillText("★", x + (i - 1) * (size + 2), y);
+    }
+  }
+
+  function drawSelect(ctx, g, progress) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#f4ecd8";
+    ctx.font = "bold 38px sans-serif";
+    ctx.fillText("选 关", W / 2, 96);
+    // 总星数
+    var total = 0;
+    for (var k in progress.stars) total += progress.stars[k];
+    ctx.fillStyle = COL.gold;
+    ctx.font = "600 15px sans-serif";
+    ctx.fillText("★ " + total + " / 60", W / 2, 128);
+
+    for (var i = 0; i < SELECT_LAYOUT.length; i++) {
+      var z = SELECT_LAYOUT[i];
+      var lv = core.LEVELS[i];
+      var unlocked = i < progress.unlocked;
+      var stars = progress.stars[i] || 0;
+      // 章标题（每行开头，行首上方 50px 避开上一行星星）
+      if (i % 5 === 0) {
+        ctx.textAlign = "left";
+        ctx.fillStyle = "rgba(244,236,216,0.65)";
+        ctx.font = "600 14px KaiTi, STKaiti, serif";
+        ctx.fillText(CHAPTERS[Math.floor(i / 5)], 36, z.y - 50);
+        ctx.textAlign = "center";
+      }
+      var boss = lv.hp.length > 1;
+      ctx.save();
+      ctx.globalAlpha = unlocked ? 1 : 0.35;
+      ctx.fillStyle = unlocked ? (boss ? "rgba(208,88,74,0.3)" : "rgba(18,24,51,0.8)") : "rgba(10,14,32,0.8)";
+      ctx.strokeStyle = unlocked ? (boss ? COL.enemyBoss : COL.dash) : "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = unlocked ? "#f4ecd8" : "rgba(255,255,255,0.4)";
+      ctx.font = "bold 20px sans-serif";
+      ctx.textBaseline = "middle";
+      ctx.fillText(unlocked ? String(i + 1) : "锁", z.x, unlocked ? z.y - 7 : z.y + 1);
+      // 星星收进圆内下半（行距只留给关名，章标题不再跟星星挤）
+      if (unlocked) drawStars(ctx, z.x, z.y + 13, stars, 11);
+      // 关名（小字）
+      ctx.font = "11px sans-serif";
+      ctx.fillStyle = unlocked ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.28)";
+      ctx.fillText(lv.name, z.x, z.y + z.r + 16);
+      ctx.restore();
+    }
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = "12px sans-serif";
+    ctx.fillText("★ 通关　★★ 无伤　★★★ 无伤且无蹩脚踢", W / 2, 726);
+  }
+
   /* ---------- Banner / 覆盖层 ---------- */
 
   function drawBanner(ctx, bn) {
@@ -612,6 +721,25 @@
     ctx.fillRect(0, 0, W, H);
   }
 
+  // 结算遮罩上的矩形按钮
+  function drawZoneButton(ctx, z, color, dim) {
+    ctx.save();
+    if (dim) ctx.globalAlpha = 0.3;
+    ctx.fillStyle = "rgba(18,24,51,0.85)";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    rr(ctx, z.x, z.y, z.w, z.h, 10);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.font = "600 19px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(z.label, z.x + z.w / 2, z.y + z.h / 2 + 1);
+    ctx.restore();
+    ctx.textBaseline = "alphabetic";
+  }
+
   // 战功称号（花鼓灯梗）：满血 = 王嘉尔口误「伞森步」；残血 = 鼓架子再练
   function victoryRank(hp) {
     if (hp >= CFG.MAX_HP) return "称号 ·「伞森步 · 身法大成」";
@@ -633,17 +761,17 @@
       ctx.fillStyle = "rgba(255,255,255,0.8)";
       ctx.fillText("白球 ·「浪子踢球」贴身一瞬，金球反弹打敌", W / 2, 366);
       ctx.fillText("红球「危」· 踢不得，「闪身步」左右侧撤避过", W / 2, 396);
-      ctx.fillText("左下移动对齐，打穿七阵 · 宗师三管血", W / 2, 426);
+      ctx.fillText("左下移动对齐，二十关四章任选 · 宗师三管血", W / 2, 426);
       ctx.fillStyle = "rgba(255,168,75,0.9)";
       ctx.fillText("三连浪子踢球/三连完美闪身→狗熊哆嗦毛·5s全弹回", W / 2, 456);
       ctx.fillStyle = "rgba(207,232,255,0.85)";
       ctx.font = "15px sans-serif";
-      ctx.fillText("最左小钮「石」· 飞蝗石 10 秒一颗，破架势可忍杀", W / 2, 482);
+      ctx.fillText("最左小钮「石」· 飞蝗石 10 秒一颗，半空击落来球/破架势忍杀", W / 2, 482);
       ctx.fillStyle = COL.gold;
       ctx.font = "600 22px sans-serif";
       var blink = 0.55 + 0.45 * Math.sin((g.time || 0) * 5);
       ctx.globalAlpha = blink;
-      ctx.fillText("点击屏幕 开 战", W / 2, 518);
+      ctx.fillText("点击屏幕 选 关", W / 2, 518);
       ctx.globalAlpha = 1;
     } else if (g.mode === "death") {
       overlay(ctx, 0.6);
@@ -657,35 +785,43 @@
       ctx.font = "16px KaiTi, STKaiti, serif";
       ctx.fillText("鼓点没踩上，再听一遍「隆咚哐」", W / 2, 424);
       ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.font = "600 20px sans-serif";
-      ctx.fillText("点击屏幕 重开本阵", W / 2, 460);
+      ctx.font = "600 16px sans-serif";
+      ctx.fillText("第 " + (g.waveIndex + 1) + " 关 · " + (g.enemy ? g.enemy.name : ""), W / 2, 452);
+      drawZoneButton(ctx, DEATH_ZONES[0], COL.gold, false);
+      drawZoneButton(ctx, DEATH_ZONES[1], "#7fa8e0", false);
     } else if (g.mode === "victory") {
       overlay(ctx, 0.68);
       ctx.fillStyle = COL.gold;
       ctx.font = "bold 48px sans-serif";
       ctx.shadowColor = COL.gold;
       ctx.shadowBlur = 22;
-      ctx.fillText("战 功", W / 2, 280);
+      ctx.fillText("战 功", W / 2, 254);
       ctx.shadowBlur = 0;
+      // 本关三星：通关 / 无伤 / 无伤且无蹩脚踢
+      drawStars(ctx, W / 2, 296, core.starsFor(g), 30);
       ctx.fillStyle = "rgba(255,255,255,0.9)";
       ctx.font = "18px sans-serif";
-      ctx.fillText("通关用时 " + g.stats.clearT.toFixed(1) + " 秒", W / 2, 344);
+      ctx.fillText("第 " + (g.waveIndex + 1) + " 关 · 通关用时 " + g.stats.clearT.toFixed(1) + " 秒", W / 2, 344);
       ctx.fillText("完美反弹 " + g.stats.perfectKicks + " 次", W / 2, 374);
       ctx.fillText("完美闪身 " + g.stats.perfectDashes + " 次", W / 2, 404);
       ctx.fillText("闪身穿球 " + g.stats.dashThroughs + " 次", W / 2, 434);
       ctx.fillText("飞蝗石命中 " + g.stats.pebbleHits + " 次", W / 2, 464);
+      ctx.fillText("飞蝗石击落 " + g.stats.pebbleBlocks + " 球", W / 2, 488);
       // 称号（花鼓灯梗）：无伤 = 王嘉尔口误「伞森步」；残血 = 鼓架子再练
       var title2 = victoryRank(g.player.hp);
       ctx.fillStyle = COL.gold;
       ctx.font = "600 19px KaiTi, STKaiti, serif";
-      ctx.fillText(title2, W / 2, 500);
-      ctx.font = "600 20px sans-serif";
-      ctx.fillText("点击屏幕 再战", W / 2, 542);
+      ctx.fillText(title2, W / 2, 522);
+      // 最终关通关后没有「下一关」
+      var hasNext = g.waveIndex + 1 < core.LEVELS.length;
+      drawZoneButton(ctx, VICTORY_ZONES[0], COL.gold, !hasNext);
+      drawZoneButton(ctx, VICTORY_ZONES[1], "#7fa8e0", false);
     }
   }
 
   return {
     W: W, H: H, BUTTONS: BUTTONS,
+    SELECT_LAYOUT: SELECT_LAYOUT, VICTORY_ZONES: VICTORY_ZONES, DEATH_ZONES: DEATH_ZONES,
     drawScene: drawScene,
     dashPoseAt: dashPoseAt,
     idlePoseAt: idlePoseAt,

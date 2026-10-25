@@ -98,6 +98,12 @@ globalThis.tt = {
     if (!SOUND) throw new Error("muted in harness");
     return new AudioContext();
   },
+  // 选关进度存档：浏览器用 localStorage 兜底 tt 本地缓存
+  getStorageSync: k => {
+    const v = localStorage.getItem(k);
+    return v == null ? "" : v;
+  },
+  setStorageSync: (k, v) => localStorage.setItem(k, String(v)),
   // 测试钩子：tt._life.show()/hide() 手动触发生命周期
   _life: {
     show: () => showH.forEach(h => h()),

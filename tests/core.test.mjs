@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { Game, CFG, WAVES, mulberry32, telegraphBeat } = require("../js/core.js");
+const { Game, CFG, LEVELS, mulberry32, telegraphBeat } = require("../js/core.js");
 
 const DT = 1 / 60;
 function newGame(seed = 7) {
@@ -57,7 +57,7 @@ function dashOnce(g) {
   g.press("dash");
   step(g, 17);
 }
-/** 一次完美闪身：贴身 40px 放球，按下瞬间球距 ≤427px（10cm 线内）
+/** 一次完美闪身：贴身 40px 放球，按下瞬间球距 ≤256px（6cm 线内）
  *  → 完美穿球，再走完全程回 idle */
 function dashThroughOnce(g) {
   incoming(g, 40);
@@ -84,19 +84,24 @@ test("开局：第一波敌人生成，玩家满血（五倍制 500），敌人�
   g.start();
   assert.equal(g.mode, "fight");
   assert.equal(g.waveIndex, 0);
-  assert.equal(g.enemy.hp, WAVES[0].hp[0]);
+  assert.equal(g.enemy.hp, LEVELS[0].hp[0]);
   assert.equal(g.player.hp, CFG.MAX_HP);
 });
 
 test("敌人：预警蓄力后发射一颗向下的球，瞄着玩家飞来", () => {
   const g = newGame();
   g.setHeld("right", true); // 玩家移到右侧，球也应朝右偏
-  step(g, 240); // 4s：覆盖 idle 0.8s + cast 0.8s + 发射
+  // 逐帧轮询到第一颗下行球出现（固定步数会撞上 rng 流水：球可能已命中/消散）
+  let down = null;
+  for (let i = 0; i < 300 && !down; i++) {
+    step(g, 1);
+    const d = g.balls.filter((b) => b.dir === "down" && !b.dead);
+    if (d.length) down = d[0];
+  }
   g.setHeld("right", false);
-  const down = g.balls.filter((b) => b.dir === "down" && !b.dead);
-  assert.ok(down.length >= 1, "应有下行球");
-  assert.ok(down[0].vy > 0);
-  assert.ok(down[0].x < g.player.x + 60 && down[0].vy > 0);
+  assert.ok(down, "应有下行球");
+  assert.ok(down.vy > 0);
+  assert.ok(down.x < g.player.x + 60, "球应瞄着玩家方向");
 });
 
 test("完美踢：球贴身前 0.2s 内按踢，金球反弹，命中敌人掉血加架势", () => {
@@ -112,7 +117,7 @@ test("完美踢：球贴身前 0.2s 内按踢，金球反弹，命中敌人掉�
   assert.equal(g.player.hp, CFG.MAX_HP);
   step(g, 62); // 球飞到敌人
   assert.ok(g.seen.includes("returnHit"), JSON.stringify(g.seen));
-  assert.equal(g.enemy.hp, WAVES[0].hp[0] - CFG.KICK_HP);
+  assert.equal(g.enemy.hp, LEVELS[0].hp[0] - CFG.KICK_HP);
   assert.equal(g.enemy.posture, CFG.PERFECT_E_POST);
   assert.equal(g.enemy.state, "hurt");
   assert.equal(g.stats.perfectKicks, 1);
@@ -127,7 +132,7 @@ test("蹩脚踢：按早了（0.2–0.4s 窗）球被踢偏消散，自己涨架
   assert.equal(g.balls.filter((b) => !b.dead).length, 0);
   assert.equal(g.player.posture, CFG.LOWKICK_P_POST);
   assert.equal(g.player.hp, CFG.MAX_HP);
-  assert.equal(g.enemy.hp, WAVES[0].hp[0]);
+  assert.equal(g.enemy.hp, LEVELS[0].hp[0]);
 });
 
 test("裸吃：不踢不闪，普通球撞身掉 12 血", () => {
@@ -170,30 +175,30 @@ test("危球：按踢也受重伤；闪身无敌帧可无伤穿过", () => {
   assert.equal(g.player.hp, CFG.MAX_HP - CFG.PERIL_HP);
 });
 
-test("完美闪身 10cm 线：线内按下穿过=Perfect，线外按下穿过=侥幸（飘「闪身步！」）", () => {
-  // 线内（≈323px ≤427）：按住方向朝球的横向落点冲，1500/s 快球在第 11 帧
-  // （无敌帧内）追上右闪落点 → 穿过且判完美
+test("完美闪身 6cm 线：线内按下穿过=Perfect，线外按下穿过=侥幸（飘「闪身步！」）", () => {
+  // 线内（≈209px ≤256）：按住方向朝球的横向落点冲，1500/s 快球在第 7~9 帧
+  // （无敌帧内）进入碰撞带与右闪轨迹相交 → 穿过且判完美
   const g2 = track(newGame());
   g2.setHeld("right", true);
-  incoming(g2, 300, "peril", 120, 1500); // 按下瞬间球距 √(300²+120²)≈323px
+  incoming(g2, 200, "peril", 60, 1500); // 按下瞬间球距 √(200²+60²)≈209px
   g2.press("dash");
   g2.setHeld("right", false);
   step(g2, 13);
   assert.ok(g2.seen.includes("perilDash"), JSON.stringify(g2.seen));
-  assert.ok(g2.seen.includes("perfectDash"), "10cm 线内按下应算完美闪身");
+  assert.ok(g2.seen.includes("perfectDash"), "6cm 线内按下应算完美闪身");
   assert.equal(g2.player.hp, CFG.MAX_HP);
   assert.equal(g2.stats.dashThroughs, 1); // 危球闪身同样计入穿球统计
   assert.ok(g2.floatTexts.some((t) => t.text === "Perfect!"), "线内穿危球应弹 Perfect");
 
-  // 线外（≈475px >427）：2400/s 超快球第 11 帧进带，同样穿过去了但按下太远
+  // 线外（≈299px >256）：2400/s 超快球第 7~8 帧进带，同样穿过去了但按下太远
   const g3 = track(newGame());
   g3.setHeld("left", true);
-  incoming(g3, 460, "peril", -120, 2400); // 按下瞬间球距 √(460²+120²)≈475px
+  incoming(g3, 290, "peril", -72, 2400); // 按下瞬间球距 √(290²+72²)≈299px
   g3.press("dash");
   g3.setHeld("left", false);
   step(g3, 13);
   assert.ok(g3.seen.includes("perilDash"), JSON.stringify(g3.seen));
-  assert.ok(!g3.seen.includes("perfectDash"), "10cm 线外按下不应算完美闪身");
+  assert.ok(!g3.seen.includes("perfectDash"), "6cm 线外按下不应算完美闪身");
   assert.equal(g3.player.hp, CFG.MAX_HP);
   const peril = g3.floatTexts.find((t) => t.text === "闪身步！");
   assert.ok(peril, "线外穿危球应飘「闪身步！」");
@@ -209,7 +214,7 @@ test("盯球闪身：球还飞着不按空闪断链；躲开越线即 Perfect �
   const g = track(newGame());
   g.enemy.idleUntil = 999; // 冻结敌人新发球
   g.setHeld("right", true);
-  incoming(g, 300); // 瞄原位，按下时球距 300 ≤427 → 完美待命
+  incoming(g, 200); // 瞄原位，按下时球距 200 ≤256 → 完美待命
   g.press("dash");
   g.setHeld("right", false);
   step(g, 17); // 闪身走完：球还飞着（盯球中），不得按空闪断链
@@ -225,14 +230,14 @@ test("盯球闪身：球还飞着不按空闪断链；躲开越线即 Perfect �
   assert.equal(g.player.hp, CFG.MAX_HP);
 });
 
-test("早闪：10cm 线外有球就闪 = 按下瞬间立刻断链（防乱按白嫖）；三连躲球照样触发大招", () => {
+test("早闪：6cm 线外有球就闪 = 按下瞬间立刻断链（防乱按白嫖）；三连躲球照样触发大招", () => {
   // 线外按下：不等接触，按下瞬间即断连击（若等越线再判，乱按的最后一次按下总是近距离）
   const g = track(newGame());
   g.enemy.idleUntil = 999;
   perfectOnce(g); // 链上先有 1 个踢球连击
   assert.equal(g.player.comboN, 1);
   g.setHeld("right", true);
-  incoming(g, 460, "normal", 120, 1500); // 球距 √(460²+120²)≈475 >427
+  incoming(g, 300, "normal", 0, 1500); // 球距 300 >256；快球闪身期越过，人在 103px 外碰不到
   g.press("dash");
   g.setHeld("right", false);
   assert.equal(g.player.comboN, 0, "线外按下应立即断连击");
@@ -247,7 +252,7 @@ test("早闪：10cm 线外有球就闪 = 按下瞬间立刻断链（防乱按白
   const dirs = ["right", "left", "right"];
   for (let i = 0; i < 3; i++) {
     g2.setHeld(dirs[i], true);
-    incoming(g2, 300);
+    incoming(g2, 200);
     g2.press("dash");
     g2.setHeld(dirs[i], false);
     step(g2, 70); // 球约 59 帧越线结算
@@ -256,17 +261,17 @@ test("早闪：10cm 线外有球就闪 = 按下瞬间立刻断链（防乱按白
   assert.equal(g2.player.state, "flail", "三连躲球应触发大招：" + JSON.stringify(g2.seen));
 });
 
-test("盯球闪身：慢速球（球速倍率调低）10cm 线内按下照样完美待命", () => {
-  // 回归：旧固定 ETA 上限 1.8s 会把慢球（如 BALL_SPEED_MUL=0.6 时 ETA=2.2s）漏盯，
-  // 与穿球路径的 427 线判定打架；现 ETA 不设限，品质由按下距离单线把关
+test("盯球闪身：慢速球（球速倍率调低）6cm 线内按下照样完美待命", () => {
+  // 回归：旧固定 ETA 上限 1.8s 会把慢球（如 BALL_SPEED_MUL=0.6 时 ETA 很长）漏盯，
+  // 与穿球路径的 256 线判定打架；现 ETA 不设限，品质由按下距离单线把关
   const g = track(newGame());
   g.enemy.idleUntil = 999;
   g.setHeld("right", true);
-  incoming(g, 420, "normal", 0, 204); // 340×0.6 慢球：球距 420 ≤427，ETA=(420+32)/204≈2.2s
+  incoming(g, 250, "normal", 0, 204); // 340×0.6 慢球：球距 250 ≤256，ETA=(250+32)/204≈1.4s
   g.press("dash");
   g.setHeld("right", false);
   assert.ok(g.player.dashWatch, "慢球在线内也应被盯住");
-  step(g, 140); // 球约 133 帧越线
+  step(g, 140); // 球约 83 帧越线
   assert.equal(g.stats.perfectDashes, 1, JSON.stringify(g.seen));
   assert.equal(g.player.comboType, "dash");
   assert.equal(g.player.hp, CFG.MAX_HP);
@@ -278,7 +283,7 @@ test("盯球本尊被残留踢窗踢回：盯球作废转踢球连击，不再�
   g.player.x = CFG.MARGIN; // 贴墙向左闪：原地不动，球始终在轴线上
   g.setHeld("left", true);
   g.press("kick"); // 残留完美踢窗 0.2s
-  incoming(g, 60); // 闪身按下时球距 60 ≤427 → 完美待命
+  incoming(g, 60); // 闪身按下时球距 60 ≤256 → 完美待命
   g.press("dash");
   g.setHeld("left", false);
   step(g, 6); // 第 ~5 帧接触：踢窗优先，完美踢回
@@ -338,7 +343,7 @@ test("飞蝗石：就绪即发一颗上行小球，命中敌人掉 5 血、不�
   assert.equal(b.pebble, true);
   assert.ok(b.vy < 0);
   step(g, 60); // 640 速飞 ~480px ≈ 0.75s
-  assert.equal(g.enemy.hp, WAVES[0].hp[0] - CFG.PEBBLE_HP, "蚊子腿伤害");
+  assert.equal(g.enemy.hp, LEVELS[0].hp[0] - CFG.PEBBLE_HP, "蚊子腿伤害");
   assert.equal(g.enemy.posture, 0, "飞蝗石不涨架势");
   assert.equal(g.enemy.state, "idle", "飞蝗石不打断敌人动作");
   assert.equal(g.stats.pebbleHits, 1);
@@ -398,6 +403,78 @@ test("飞蝗石：架势满（踉跄）时命中=忍杀；非踉跄收残血只�
   assert.ok(!g2.seen.includes("deathblow"), "非踉跄收头不算忍杀");
   assert.ok(!g2.floatTexts.some((t) => t.text === "黑虎掏心！"), "不飘处决名");
   assert.equal(g2.enemy.state, "dead");
+});
+
+test("飞蝗石截球：上行途中撞下来球，一石换一球（玩家零伤、不占穿球统计）", () => {
+  const g = track(newGame());
+  g.enemy.idleUntil = 9999;
+  g.enemy.x = g.player.x; // 石子直上，与垂直来球同一条线
+  incoming(g, 200); // 340 速，与 640 速石子相向：约第 11 帧相撞
+  g.press("pebble");
+  step(g, 14);
+  assert.equal(g.balls.length, 0, "石子与来球应双双消散");
+  assert.equal(g.stats.pebbleBlocks, 1);
+  assert.ok(g.seen.includes("pebbleBlock"), JSON.stringify(g.seen));
+  assert.equal(g.player.hp, CFG.MAX_HP, "球被击落，玩家零伤");
+  assert.equal(g.stats.dashThroughs, 0, "石子截球不算闪身穿球");
+  assert.equal(g.stats.pebbleHits, 0, "石子半路用掉，没打到敌人");
+});
+
+test("飞蝗石截球：一颗石子只换一颗球，撞球后石子即消失", () => {
+  const g = track(newGame());
+  g.enemy.idleUntil = 9999;
+  g.enemy.x = g.player.x;
+  incoming(g, 200); // 近球
+  incoming(g, 320); // 远球，同一条线
+  g.press("pebble");
+  step(g, 14);
+  assert.equal(g.stats.pebbleBlocks, 1, "只截一颗");
+  const down = g.balls.filter((b) => b.dir === "down" && !b.dead);
+  assert.equal(down.length, 1, "远球继续飞，石子已不在");
+  assert.equal(g.balls.some((b) => b.pebble), false);
+});
+
+test("飞蝗石截球：危球照样一石击落（应急防御）", () => {
+  const g = track(newGame());
+  g.enemy.idleUntil = 9999;
+  g.enemy.x = g.player.x;
+  incoming(g, 200, "peril"); // 455 速危球
+  g.press("pebble");
+  step(g, 12);
+  assert.equal(g.stats.pebbleBlocks, 1);
+  assert.equal(g.player.hp, CFG.MAX_HP, "危球被击落");
+  assert.ok(!g.seen.includes("perilHit"));
+});
+
+test("飞蝗石截球：截掉的若是闪身盯球，盯球作废不发 Perfect/不计连击", () => {
+  const g = track(newGame());
+  g.enemy.idleUntil = 9999;
+  g.enemy.x = g.player.x;
+  g.setHeld("right", true);
+  incoming(g, 200); // 按下闪身时球距 200 ≤256 → 完美待命
+  g.press("dash");
+  assert.ok(g.player.dashWatch, "前置：盯球已建立");
+  g.press("pebble"); // 闪身途中发石（idle 锁不含 dash）
+  g.setHeld("right", false);
+  step(g, 24);
+  assert.equal(g.stats.pebbleBlocks, 1);
+  assert.equal(g.stats.perfectDashes, 0, "球被石子打掉，闪身不领 Perfect");
+  assert.ok(!g.seen.includes("perfectDash"), JSON.stringify(g.seen));
+  assert.equal(g.player.comboN, 0);
+  assert.equal(g.player.hp, CFG.MAX_HP);
+});
+
+test("飞蝗石截球：偏离石子轨迹的来球不被截，石子继续飞向敌人", () => {
+  const g = track(newGame());
+  g.enemy.idleUntil = 9999;
+  g.enemy.x = g.player.x;
+  incoming(g, 200, "normal", 28); // 横向偏 28px：错开截球半径(20)但仍在受击半宽(30)内
+  g.press("pebble");
+  step(g, 40); // 0.49s 后偏球砸到玩家；石子 0.75s 才到敌人
+  assert.equal(g.stats.pebbleBlocks, 0);
+  assert.equal(g.player.hp, CFG.MAX_HP - CFG.E_HP, "偏球照常伤人");
+  step(g, 24); // 石子继续飞，命中敌人
+  assert.equal(g.stats.pebbleHits, 1, "没截球的石子照常打敌人");
 });
 
 test("闪身不按方向：花鼓灯式随机向左/向右横移，不再有原地闪身", () => {
@@ -557,9 +634,9 @@ test("闪身途中球被踢窗处理：不算空闪，不抹掉刚赚的踢球�
   assert.equal(g.player.comboN, 1, "踢球连击不应被幽灵空闪抹掉");
 });
 
-test("完美闪身距离判定：球离身约 10cm（≤427 世界像素）内闪才算；球还远就闪=空闪断链", () => {
-  // 物理事实：无敌帧 0.2s 内球最多逼近 123px（455 速），所以真正能穿到球的闪身
-  // 必然按在 10cm 线内——穿到 ≈ 完美。球还 200px 外就闪且没穿到 = 空闪
+test("完美闪身距离判定：球离身约 6cm（≤256 世界像素）内闪才算；球还远就闪=空闪断链", () => {
+  // 物理事实：无敌帧 0.2s 内球最多逼近 123px（455 速），6cm 线留出少量提前量；
+  // 按得过早（球在 6~10cm 外）即使侥幸穿到也只算早闪断链。没穿到 = 空闪
   const g = track(newGame());
   dashThroughOnce(g);
   assert.equal(g.stats.perfectDashes, 1);
@@ -597,7 +674,7 @@ test("贴墙闪身不被位移 clamp 误判：真完美（球距 122px）照样 
   const g = track(newGame());
   g.player.x = CFG.MARGIN; // 贴左墙，向左闪全程被 clamp 在原地
   g.setHeld("left", true);
-  incoming(g, 122, "normal", 0, 500); // 按下时球距 122 ≤427；约 0.18s 后入带，仍在无敌帧
+  incoming(g, 122, "normal", 0, 500); // 按下时球距 122 ≤256；约 0.18s 后入带，仍在无敌帧
   g.press("dash");
   g.setHeld("left", false);
   step(g, 12);
@@ -617,7 +694,7 @@ test("闪身途中踢窗先处置普通球，同闪再穿危球：品质按真�
   incoming(g, 25);
   step(g, 1);
   assert.equal(g.stats.perfectKicks, 1);
-  // 同一次闪身再穿一颗危球：按下瞬间虚拟球距约 63px（≤427），不得复用残留 false
+  // 同一次闪身再穿一颗危球：按下瞬间虚拟球距约 63px（≤256），不得复用残留 false
   g.balls.push({
     x: g.player.x, y: CFG.PLAYER_Y - 56, vx: 0, vy: 455,
     kind: "peril", dir: "down", dead: false,
@@ -678,19 +755,15 @@ test("狗熊哆嗦毛：架势满不打断大招；弹回处决杀穿本波也�
   step(g, 5);
   assert.equal(g.player.state, "flail", "大招期间架势满不应触发崩架势");
 
-  // 防线二：弹回球处决本波最后一名敌人，波次推进后大招继续（5s 承诺不缩水）
+  // 防线二：弹回球处决本关最后一名敌人，通关结算不砍大招姿态（5s 承诺不缩水）
   const e = g.enemy;
   e.posture = 100;
   e.state = "stagger";
   e.stateT = 0;
   incoming(g, 25);
-  step(g, 140); // 弹回 66 帧 + 处决 + DEAD_HOLD 60 帧后进下一波
-  assert.equal(g.waveIndex, 1, "处决后应推进到第二波");
-  assert.equal(g.player.state, "flail", "波次切换不应打断狗熊哆嗦毛");
-  // 大招结束后正常回 idle（残余时间自然走完）
-  let n = 0;
-  while (g.player.state === "flail" && n < 330) { step(g, 1); n++; }
-  assert.equal(g.player.state, "idle");
+  step(g, 140); // 弹回 66 帧 + 处决 + DEAD_HOLD 60 帧后通关
+  assert.equal(g.mode, "victory", "处决本关最后一名敌人应通关");
+  assert.equal(g.player.state, "flail", "通关结算不应打断狗熊哆嗦毛");
 });
 
 test("踢连击只看时机不挑横向：完美踢（0.2s 窗内）都计连击；偏心 ≤30 也计", () => {
@@ -868,49 +941,35 @@ test("敌人踉跄超时未被处决：架势清零恢复战斗", () => {
   assert.equal(e.posture, 0);
 });
 
-test("关卡配表：七阵齐全，血量/球速/危球率合法且难度递增", () => {
-  assert.equal(WAVES.length, 7);
-  for (const w of WAVES) {
-    assert.ok(w.sub && w.name, "每阵要有阵名");
-    assert.ok(w.hp.length >= 1 && w.hp.every((h) => h > 0), "血条为正");
-    assert.ok(w.ballSpeed >= 300 && w.ballSpeed <= 650, `球速合理 ${w.name}`);
-    assert.ok(w.perilChance >= 0 && w.perilChance <= 0.6, `危球率合理 ${w.name}`);
-    assert.ok(w.interval >= 0.7 && w.interval <= 1.6, `节奏合理 ${w.name}`);
-  }
-  // 节奏总体递增（允许个别持平）：末阵 interval 不大于一阵，球速不慢于一阵
-  assert.ok(WAVES[6].interval <= WAVES[0].interval);
-  assert.ok(WAVES[6].ballSpeed >= WAVES[0].ballSpeed);
-  // 多管血只在主将/双煞/宗师
-  assert.deepEqual(WAVES.map((w) => w.hp.length), [1, 1, 2, 1, 2, 1, 3]);
-});
+// 关卡配表（20 关 4 章）与单关通关的完整断言在 tests/levels.test.mjs
 
-test("打死一命敌人 → 进入第二波", () => {
+test("打死一命敌人 → 本关通关（选关版不再连锁下一关）", () => {
   const g = newGame();
   g.enemy.hp = 3;
   returnHitEnemy(g);
   assert.equal(g.enemy.state, "dead");
   step(g, 65); // 死亡停留 1s
-  assert.equal(g.waveIndex, 1);
-  assert.equal(g.enemy.name, WAVES[1].name);
+  assert.equal(g.mode, "victory");
+  assert.equal(g.waveIndex, 0, "通关不自动推进关卡");
   assert.equal(g.stats.kills, 1);
 });
 
 test("宗师三管血：处决一管后复活新血条，三管全打完才通关", () => {
   const g = newGame();
-  const last = WAVES.length - 1;
+  const last = LEVELS.length - 1;
   g.spawnWave(last);
   assert.equal(g.enemy.nodes, 3);
   g.enemy.hp = 3;
   returnHitEnemy(g);
   assert.equal(g.enemy.nodes, 2);
-  assert.equal(g.enemy.hp, WAVES[last].hp[1]);
+  assert.equal(g.enemy.hp, LEVELS[last].hp[1]);
   assert.equal(g.enemy.state, "rise");
   step(g, 75); // 起身
   assert.equal(g.mode, "fight");
   g.enemy.hp = 3;
   returnHitEnemy(g);
   assert.equal(g.enemy.nodes, 1);
-  assert.equal(g.enemy.hp, WAVES[last].hp[2]);
+  assert.equal(g.enemy.hp, LEVELS[last].hp[2]);
   step(g, 75);
   g.enemy.hp = 3;
   returnHitEnemy(g);
@@ -931,5 +990,5 @@ test("玩家死亡 → 重开本波，玩家回满、敌人重置", () => {
   assert.equal(g.mode, "fight");
   assert.equal(g.waveIndex, waveBefore);
   assert.equal(g.player.hp, CFG.MAX_HP);
-  assert.equal(g.enemy.hp, WAVES[waveBefore].hp[0]);
+  assert.equal(g.enemy.hp, LEVELS[waveBefore].hp[0]);
 });

@@ -9,7 +9,7 @@ const { createAudio } = require("../js/audio.js");
 
 const EVENTS = [
   "kick", "perfectKick", "lowKick", "dash", "dashThrough", "perfectDash", "perilDash",
-  "drum", "fire", "peril", "perilFire", "hurt", "perilHit", "returnHit",
+  "drum", "fire", "peril", "perilFire", "hurt", "perilHit", "returnHit", "pebbleBlock",
   "stagger", "break", "deathblow", "flail", "flailBounce",
   "wave", "victory", "death", "unknown-evt",
 ];
@@ -85,9 +85,14 @@ function installMockAudio() {
   }
   const prev = globalThis.AudioContext;
   globalThis.AudioContext = MockAudioContext;
+  // mock 环境默认「无网络」：采样路径不存在，立即落合成鼓点
+  const prevFetch = globalThis.fetch;
+  delete globalThis.fetch;
   const restore = () => {
     if (prev) globalThis.AudioContext = prev;
     else delete globalThis.AudioContext;
+    if (prevFetch) globalThis.fetch = prevFetch;
+    else delete globalThis.fetch;
   };
   return { started, buffered, restore, sr: 44100 };
 }
@@ -127,6 +132,157 @@ test("狗熊哆嗦毛：flail 排程「隆·咚·哐」循环鼓点铺满 5s（1
   assert.ok(lon.every((n) => Math.abs(n.vol - 0.22) < 1e-9));
   assert.ok(dong.every((n) => Math.abs(n.vol - 0.14) < 1e-9));
   assert.ok(buffered.every((b) => b.n === Math.floor(sr * 0.05) || b.n === Math.floor(sr * 0.06)));
+});
+
+/* ---------- 大招真录音采样（assets/snd/flail.mp3） ---------- */
+
+test("flail：真机有 InnerAudioContext 时播真录音，不排合成鼓点；重播复用同一实例", (t) => {
+  const calls = [];
+  const ia = {
+    src: "", volume: 1, obeyMuteSwitch: true,
+    play() { calls.push("play:" + this.src); },
+    stop() { calls.push("stop"); },
+    seek(x) { calls.push("seek:" + x); },
+    onError() {},
+  };
+  const ttMock = {
+    // ensure() 会先问 WebAudio：让它失败，证明采样路径不依赖 AudioContext
+    getAudioContext() { throw new Error("no webaudio"); },
+    createInnerAudioContext() { return ia; },
+  };
+  globalThis.tt = ttMock;
+  t.after(() => { delete globalThis.tt; });
+
+  const audio = createAudio();
+  audio.unlock();
+  audio.onEvent("flail");
+  assert.equal(calls.length, 1, "只调用 play");
+  assert.match(calls[0], /^play:assets\/snd\/flail\.mp3$/);
+  assert.equal(ia.obeyMuteSwitch, false, "iOS 静音开关不应压住大招音");
+  assert.ok(ia.volume > 0 && ia.volume <= 1);
+
+  audio.onEvent("flail");
+  assert.deepEqual(calls.slice(1), ["stop", "play:" + ia.src], "重播=stop（自动归零）→play 复用实例，不 seek");
+});
+
+test("flail：首播 play() 之后才异步报错（文件缺失/解码失败）也立即补合成鼓点，这发大招不哑火", (t) => {
+  const { started, restore } = installMockAudio();
+  let errH = null;
+  globalThis.tt = {
+    getAudioContext() { return new globalThis.AudioContext(); },
+    createInnerAudioContext() {
+      return { src: "", volume: 1, onError(h) { errH = h; }, play() {}, stop() {} };
+    },
+  };
+  t.after(() => { delete globalThis.tt; restore(); });
+
+  const audio = createAudio();
+  audio.unlock();
+  audio.onEvent("flail"); // play 成功返回（无任何振荡器）
+  assert.equal(started.length, 0, "采样路径已承接，不排合成");
+  errH(new Error("decode fail after play")); // 异步 onError
+  assert.equal(started.filter((n) => n.freq === 150).length, 10, "报错即补 10 组隆鼓");
+});
+
+test("flail：InnerAudio 报错（缺文件/解码失败）后回退合成鼓点", (t) => {
+  const { started, restore } = installMockAudio();
+  let errH = null;
+  globalThis.tt = {
+    getAudioContext() { return new globalThis.AudioContext(); },
+    createInnerAudioContext() {
+      return { src: "", volume: 1, onError(h) { errH = h; }, play() {}, stop() {}, seek() {} };
+    },
+  };
+  t.after(() => { delete globalThis.tt; restore(); });
+
+  const audio = createAudio();
+  audio.unlock();
+  assert.equal(typeof errH, "function", "注册了 onError");
+  errH(new Error("src not found"));
+  audio.onEvent("flail");
+  assert.equal(started.filter((n) => n.freq === 150).length, 10, "回退：10 组隆鼓照常排程");
+});
+
+test("flail：浏览器 fetch+decodeAudioData 预热成功后走 BufferSource", async (t) => {
+  const starts = [];
+  const ac = {
+    state: "running", currentTime: 0, sampleRate: 44100, destination: {},
+    resume() {},
+    decodeAudioData(buf) { return Promise.resolve({ __bytes: buf.byteLength }); },
+    createGain() { return { gain: { value: 1 }, connect() { return ac.destination; } }; },
+    createBufferSource() {
+      return { buffer: null, connect(g) { this._g = g; return g; }, start(when) {
+        starts.push({ when, hasBuf: !!this.buffer, gainVal: this._g.gain.value });
+      } };
+    },
+  };
+  const prevAC = globalThis.AudioContext;
+  globalThis.AudioContext = function () { return ac; };
+  const prevFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(16)) });
+  t.after(() => {
+    if (prevAC) globalThis.AudioContext = prevAC; else delete globalThis.AudioContext;
+    if (prevFetch) globalThis.fetch = prevFetch; else delete globalThis.fetch;
+  });
+
+  const audio = createAudio();
+  audio.unlock();
+  await new Promise((r) => setTimeout(r, 0)); // 等 fetch→arrayBuffer→decode 三条 promise 链落定
+
+  audio.onEvent("flail");
+  assert.equal(starts.length, 1, "采样源播放一次");
+  assert.equal(starts[0].hasBuf, true);
+  assert.ok(starts[0].gainVal > 0 && starts[0].gainVal <= 1);
+
+  audio.onEvent("flail");
+  assert.equal(starts.length, 2, "连续大招各起一个 BufferSource（可重叠）");
+});
+
+test("flail：相对路径 404（harness 页在 /harness/ 下）自动回退根路径取采样", async (t) => {
+  const starts = [];
+  const urls = [];
+  const ac = {
+    state: "running", currentTime: 0, sampleRate: 44100, destination: {},
+    resume() {},
+    decodeAudioData: () => Promise.resolve({}),
+    createGain() { return { gain: { value: 1 }, connect() { return ac.destination; } }; },
+    createBufferSource() {
+      return { connect() {}, start() { starts.push(urls[urls.length - 1]); } };
+    },
+  };
+  const prevAC = globalThis.AudioContext;
+  globalThis.AudioContext = function () { return ac; };
+  const prevFetch = globalThis.fetch;
+  globalThis.fetch = (u) => {
+    urls.push(u);
+    return Promise.resolve(u.charAt(0) === "/"
+      ? { ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) }
+      : { ok: false, status: 404 });
+  };
+  t.after(() => {
+    if (prevAC) globalThis.AudioContext = prevAC; else delete globalThis.AudioContext;
+    if (prevFetch) globalThis.fetch = prevFetch; else delete globalThis.fetch;
+  });
+
+  const audio = createAudio();
+  audio.unlock();
+  await new Promise((r) => setTimeout(r, 0));
+  audio.onEvent("flail");
+  assert.deepEqual(urls, ["assets/snd/flail.mp3", "/assets/snd/flail.mp3"], "先相对后根路径");
+  assert.equal(starts.length, 1, "回退取到采样并播放");
+});
+
+test("flail：浏览器解码失败静默回退合成鼓点", async (t) => {
+  const { started, restore } = installMockAudio();
+  t.after(restore);
+  globalThis.AudioContext.prototype.decodeAudioData = () => Promise.reject(new Error("bad mp3"));
+  globalThis.fetch = () => Promise.resolve({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+
+  const audio = createAudio();
+  audio.unlock();
+  await new Promise((r) => setTimeout(r, 0));
+  audio.onEvent("flail");
+  assert.equal(started.filter((n) => n.freq === 150).length, 10, "回退：10 组隆鼓照常排程");
 });
 
 test("drum/fire 旧音色逐参数不变（重构 gu/kuang 守卫）", (t) => {

@@ -311,3 +311,43 @@ render-only，core.js 零改动。起因：除闪身（上一轮返工）外，�
 - **测试**：tt **76/76**（新增 figure.test.mjs 后基线 74→74+2 音频用例；wx 无 figure 套件为 66/66）。audio.test.mjs 新增 mock AudioContext：锁三拍 delay 网格（含 30 噪声拍点必须与网格重合）、强弱拍音量分层；drum/fire 逐参数守卫（freq/freq2/vol/dur/噪声时长音量）。code-reviewer 提出两条 MEDIUM 已修：mock 原先 ramp 空操作测不到 vol/freq2、全局 AudioContext 污染使「无环境静默」用例依赖声明顺序（改 t.after 还原 + 用例开头显式 delete）
 - **真机**：headless Edge CDP（?sound=1）flail 实测 51 osc/33 buffer、0 page error，cdp-moves 断言阈值 8/1→40/30，顺手修陈旧 hp 断言 100→500（MAX_HP 早已 ×5）；有头 Edge 实放听感确认
 - **待办**：抖音真机/开发者工具里跑一次 flail——一次性前瞻排程约 140 节点（70 gain+40 osc+30 buffer）是此前未到过的量级，留意 tt.getAudioContext 子集与挂起恢复后 currentTime 跳变
+
+## 2026-10-22（十四）完美闪身 10cm→6cm 加难度（双端 tt 76/wx 66 测）
+
+- **需求**：「完美闪身加点难度」——DASH_PERFECT_PX 427(10cm)→**256(6cm)**，在 3cm 太紧与 10cm 太松之间取中；按下瞬间球在 6cm 内才计完美（穿球/盯球躲开两路径共线不变）
+- **测试重标定**（旧探针距离按 0.6 缩放，几何重新验算 HIT_HALF_W=30 内确实相交）：6cm 线用例线内 323→209px（200/偏移60/1500速，第7~9帧相交）、线外 475→299px（290/-72/2400速，第7~8帧侥幸穿）；盯球躲 300→200；早闪 475→300（垂直快球，闪在 103px 外碰不到）；慢球 420@204→250@204（ETA 1.4s 仍验无 ETA 上限）
+- **平衡不变量全绿**：skilled bot 8 种子通关（bot 只在 42px 内闪身，远严于新线）、mashDash 8 种子 0 大招（线收紧只会更强）、mashKick 0 通关、站桩 0 输出
+- 同步更新 core 三处注释、cdp-moves 注释（≤256px/6cm，其探针 40px 不受影响）
+
+## 2026-10-22（十五）飞蝗石半空截球（用户：「小石子能打掉一个球」，双端 tt 81/wx 71 测）
+
+- **新机制**：飞蝗石上行途中撞下来球（含危球）=一石换一球双双消散；一颗只换一颗；偏离石子轨迹的球不截，石子继续飞打敌人。新增 `pebbleIntercept(dt)` 在 ballsTick **所有移动/碰撞之前**扫（同帧石球相遇不能算砸到玩家），`blockBall(s,o,udt)` 给表现
+- **扫掠判定防穿透**：石子 640+球 570 相向 ~1210px/s≈20px/帧，固定半径必隧穿；用帧内相对匀速直线最近距离（u∈[0,1] 钳制），CFG.PEBBLE_BLOCK_R=20（视觉半径 6+11=17）
+- **盯球作废**：被截球若正是 dashWatch，清引用不发 Perfect/不计连击（闪身没躲成，是石子打的）；表现=冰蓝火花+小环+飘字「击落」+pebbleBlock 事件（脆响：5200Hz 噪+1320→760 三角），危球火花转红
+- **状态规则不变**：dash 途中允许发石（测试依赖：闪身盯球时发石截球），break/hurt/flail 仍锁；CD 10s 不变；stats.pebbleBlocks 进战功页（464 行下加 488，称号/再战顺移 522/564）
+- **TDD 5 例**：同线普通球截杀零伤不占穿球统计/一石一换远球续飞/危球可截/盯球被截不领奖励/偏 28px（>20 半径 <30 受击半宽）不截且石子照常命中敌人。几何注：偏球测试初版用 120px 偏移会直接漏出受击带（HIT_HALF_W=30），改 28 才同时满足「不截+砸到人」
+- 平衡 bot 不按石子，8 种子通关/乱按防线不变量全绿；CDP 真机冻帧三场景 PASS（blocks 1→2、危球零伤、偏球 hp500→488 且 enemyHits=1），0 page error
+
+## 2026-10-24（十六）大招真录音：狗熊哆嗦毛采样替换合成鼓海（双端 tt 87/wx audio 1 套件）
+
+- **需求**：用户提供 `C:\Users\4v\20261024_143042.mp4`（屏幕录像，片名即「狗熊哆嗦毛」），裁出音频在大招时播放
+- **素材**：源 7.4s，有效人声锣鼓只在 0–2.7s（其后数字静音）；ffmpeg `-t 2.85 -af "afade in 12ms,loudnorm I=-14:TP=-1.5:LRA=11,afade out 90ms" -ar 44100 -b:a 128k` → `assets/snd/flail.mp3`（47KB，2.85s），双端首个打包资源（游戏原本全程序化无素材）
+- **播放**：真机 `tt/wx.createInnerAudioContext()`（包内相对路径 `assets/snd/flail.mp3`，复用单实例 stop()→play() 重播——stop 自带归零，不 seek(0)，避免停止态 seek 在 iOS 误触发 onError；`obeyMuteSwitch=false`，onError 永久回退且若已在大招时刻则立即补合成，首发放哑也不哑火）；浏览器 fetch→decodeAudioData→BufferSource（unlock 时预热；harness 页在 /harness/ 下，相对路径 404 → 自动回退根路径 `/assets/...`；预热中触发则等解码，解码失败补合成）；无环境/全失败静默回退原 10 组「隆·咚·哐」合成鼓点
+- **TDD**：audio.test.mjs 76→87，新增 5 例（InnerAudio 首播只 play/重播 stop+play 不 seek/onError 事前与 play 后异步报错两路径回退；浏览器 BufferSource 预热+连开两源；相对 404→根路径回退；解码失败回退）；既有 10 组鼓点网格用例保留=回退守卫；code review APPROVE（0 CRITICAL/HIGH，2 MEDIUM 即上面去 seek+异步 onError 补合成，已修）
+- **真机**：headless Edge CDP ?sound=1 三连闪身触发：事件序列 dash/dashThrough/perfectDash×3+flail+flailBounce×2，采样 BufferSource 时长 2.85s 恰好最后播、短噪声源 3 个、无 40 osc 鼓海，0 page error，cdp-moves 断言改为 durs 时长识别；serve.mjs 补 .mp3/.wav/.ogg MIME（仅 tt 有 tools/）
+- **待办**：抖音/微信真机或开发者工具各听一次（InnerAudio 包内路径与 iOS 静音开关表现）
+
+## 2026-10-25（十七）二十关选关版：4 章 × 5 关 + 四种新球 + 线性解锁三星（双端 107 测）
+
+- **需求**：「做成可以直接选关的，至少要有20关」——WAVES 七阵连打制废除，改关卡制直选
+- **关卡结构**：`LEVELS` 20 关 = 4 章 × 5 关（巡场/危球/花样/宗师），章末 5/10/15/20 多管血（宗师 3 管 550/480/420）；`startLevel(i)` 单关独立开局（stats 每关重计）、`toSelect()` 回选关、打死一命即 `victory`（advanceWave 不再连打下一阵）
+- **四种新球**（配表 `mix:{curve,split,heavy,boomerang}` 混入率，chooseAttack 一次 rng 按 peril→boomerang→curve→split→heavy 累加命中，peril 族 cast×1.35 推预警）：
+  - **弧线球 curve**（绿）：下行中 `vx += curveDir·150·dt` 侧飘，普通族可踢
+  - **分裂球 split**（紫）：**穿越** SPLIT_Y=430 瞬间（`y>=430 && 上帧y<430`，防静置误判）炸成 2 颗 normal 子球 ±110 vx，splitChild 不二次分裂，踢回不炸
+  - **慢速重球 heavy**（灰，r=16）：0.55 倍速，裸吃 24 / 踢回 68 高伤
+  - **回旋危球 boomerang**（橙）：危球族踢无效；首段过线掉头爬升、爬过 330 折返俯冲、二段过线才结算闪身/ miss；hitP 加 `vy>0` 门爬升段不伤人；前三章不出现
+- **选关/进度**：render 导出 SELECT_LAYOUT(4×5, r=30)/CHAPTERS/VICTORY_ZONES/DEATH_ZONES；星星收进节点圆内（数字 z.y-7、星 11px z.y+13、关名圆下）防与章标题撞行；线性解锁 + 三星评价 `starsFor`（★通关/★★无伤 damageTaken==0/★★★无伤且无蹩脚踢 lowKicks==0），`recordClear` 不可变取高星封顶 20；存档 `kickball_progress_v1` 走 getStorageSync（harness shim 补 localStorage 版），victory 事件帧循环排空时 onVictory 落盘
+- **平衡发现**：单关独立后旧七阵「跨波血量磨损放倒乱按」防线消失，mashKick 实测能过多数单关——新防线=踢免球密度（危球+回旋危球>50% 必死，乱按打 Lv17 幻影先生 0/5），三星评价是反乱按胡萝卜
+- **TDD**：新增 levels.test.mjs（配表约束/startLevel/三星/recordClear/四球语义/混编可抽齐）；core.test WAVES→LEVELS 全换、flail 定格断言改 victory、「敌人发球」改逐帧轮询（chooseAttack 必消耗 rng 致流水偏移）；balance.test 重写——skilled 20 关 ×4 种子逐关全通、mashKick 断言移到 Lv17、回旋危球关站桩必死 skilled 全过。双端各 **107/107**
+- **真机**：新 tools/cdp-levels.mjs（无头 Edge 9333 + 8821）——选关界面截图（注入 unlocked:7 样本）、抽 1/13/14/16/20 五关 skilled bot 每帧真实 drawScene 全 victory、0 render error（lv16 回旋危球关 ~90-115s 仅 1 星，明显更难符合设计；lv20 全混编四种新球齐出）；选关布局经两轮截图目检修撞行
+- **音效**：curveFire/splitFire/splitPop/heavyFire/boomerangFire/boomerangTurn/boomerangDive 七事件补齐

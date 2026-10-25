@@ -41,7 +41,34 @@ var view = {
   time: 0,
   kickAnimDur: core.CFG.KICK_ANIM,
   kickCooldown: core.CFG.KICK_COOLDOWN,
+  progress: null, // 选关界面读这份进度（recordClear 换引用时同步换）
 };
+
+/* ---------- 进度持久化（选关版：线性解锁 + 三星） ---------- */
+
+var PROGRESS_KEY = "kickball_progress_v1";
+var progress = loadProgress();
+view.progress = progress;
+
+function loadProgress() {
+  try {
+    var raw = api.getStorageSync(PROGRESS_KEY);
+    var p = typeof raw === "string" && raw ? JSON.parse(raw) : raw;
+    if (p && typeof p === "object" && p.unlocked >= 1 && p.stars) return p;
+  } catch (e) { /* 存档损坏则重来 */ }
+  return core.emptyProgress();
+}
+
+function saveProgress() {
+  try { api.setStorageSync(PROGRESS_KEY, JSON.stringify(progress)); } catch (e) { /* 静默 */ }
+}
+
+// 通关事件在帧循环排空时调用：记星 + 解锁下一关（同帧重复 victory 事件幂等）
+function onVictory() {
+  progress = core.recordClear(progress, game.waveIndex, core.starsFor(game));
+  view.progress = progress;
+  saveProgress();
+}
 
 /* ---------- 触摸 ---------- */
 
@@ -71,10 +98,49 @@ function flashButton(id) {
   setTimeout(function () { view.pressed[id] = false; }, 110);
 }
 
-function tapOverlay() {
+function hitZone(zones, p) {
+  for (var i = 0; i < zones.length; i++) {
+    var z = zones[i];
+    if (p.x >= z.x && p.x <= z.x + z.w && p.y >= z.y && p.y <= z.y + z.h) return z;
+  }
+  return null;
+}
+
+function hitSelect(p) {
+  var layout = renderMod.SELECT_LAYOUT;
+  for (var i = 0; i < layout.length; i++) {
+    var z = layout[i];
+    var dx = p.x - z.x, dy = p.y - z.y;
+    if (dx * dx + dy * dy <= z.r * z.r) return z;
+  }
+  return null;
+}
+
+// 非战斗界面的点按路由：标题→选关；选关→开已解锁的关；
+// 败北→重打/选关（点空白=重打）；胜利→下一关/选关（点空白=重打本关）
+function tapOverlay(p) {
   audio.unlock();
-  if (game.mode === "title" || game.mode === "victory") game.start();
-  else if (game.mode === "death") game.restart();
+  if (game.mode === "title") { game.toSelect(); return; }
+  if (game.mode === "select") {
+    var s = hitSelect(p);
+    if (s && s.i < progress.unlocked) game.startLevel(s.i);
+    return;
+  }
+  if (game.mode === "death") {
+    var dz = hitZone(renderMod.DEATH_ZONES, p);
+    if (dz && dz.id === "select") game.toSelect();
+    else game.restart();
+    return;
+  }
+  if (game.mode === "victory") {
+    var vz = hitZone(renderMod.VICTORY_ZONES, p);
+    if (vz && vz.id === "select") { game.toSelect(); return; }
+    if (vz && vz.id === "next" && game.waveIndex + 1 < core.LEVELS.length) {
+      game.startLevel(game.waveIndex + 1);
+      return;
+    }
+    if (!vz) game.startLevel(game.waveIndex); // 点空白重打本关
+  }
 }
 
 api.onTouchStart(function (e) {
@@ -82,7 +148,7 @@ api.onTouchStart(function (e) {
   for (var i = 0; i < touches.length; i++) {
     var t = touches[i];
     if (game.mode !== "fight") {
-      tapOverlay();
+      tapOverlay(toWorld(t));
       return;
     }
     var b = hitButton(toWorld(t));
@@ -160,7 +226,10 @@ function frame() {
   var guard = 0;
   while (acc >= STEP && guard < 5) {
     game.update(STEP);
-    for (var i = 0; i < game.events.length; i++) playEvent(game.events[i]);
+    for (var i = 0; i < game.events.length; i++) {
+      if (game.events[i] === "victory") onVictory();
+      playEvent(game.events[i]);
+    }
     acc -= STEP;
     guard++;
   }
@@ -173,5 +242,8 @@ requestAnimationFrame(frame);
 
 // 调试 / 自动化钩子
 if (typeof globalThis !== "undefined") {
-  globalThis.__kickball = { game: game, CFG: core.CFG, WAVES: core.WAVES, audio: audio };
+  globalThis.__kickball = {
+    game: game, CFG: core.CFG, LEVELS: core.LEVELS, audio: audio,
+    getProgress: function () { return progress; },
+  };
 }

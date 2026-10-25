@@ -66,9 +66,10 @@
     // 踢连击：接触时 kickAge≤0.2s（=完美踢窗），即任何完美踢都计连击；
     // 旧 0.08s 内圈窗对真人过严（踢球 3 次难触发大招），已放宽
     COMBO_KICK_WINDOW: 0.2,
-    // 完美闪身距离：按下时来球在 427px（≈10cm，按 128px≈3cm 换算）内；
+    // 完美闪身距离：按下时来球在 256px（≈6cm，按 128px≈3cm 换算）内；
+    // 10cm 太松（穿到≈完美没难度），3cm 太紧真人按不出，取中间 6cm。
     // 穿球与「盯球躲开」两条路径共用这条线定品质
-    DASH_PERFECT_PX: 427,
+    DASH_PERFECT_PX: 256,
     // 大招弹回只给象征性伤害：全弹回（含危球）本身已是奖励，不该再放大输出（架势/处决不打折）
     FLAIL_KICK_HP: 10,
     FLAIL_TIME: 5,
@@ -81,18 +82,55 @@
     PEBBLE_CD: 10,
     PEBBLE_HP: 5,
     PEBBLE_SPEED: 640,
+    // 截球半径：石子(r6)+来球(r11) 视觉半径 17，取 20（扫掠判定另补偿高速穿透）
+    PEBBLE_BLOCK_R: 20,
+    // ---- 四种新球种（二十关选关版）----
+    // 弧线球（普通族，可踢）：下行途中持续侧向加速
+    CURVE_ACCEL: 150,
+    // 分裂球（普通族，可踢）：越过中场炸成 2 颗普通球，只炸一次
+    SPLIT_Y: 430,
+    SPLIT_SPREAD: 110,
+    // 慢速重球（普通族，可踢）：慢但疼，踢回高伤——高风险高回报
+    HEAVY_HP: 24,
+    HEAVY_P_POST: 16,
+    HEAVY_SPEED_MUL: 0.55,
+    HEAVY_KICK_HP: 68,
+    HEAVY_R: 16,
+    // 回旋危球（危球族，踢无效）：第一次越过玩家线不结算，掉头爬升后俯冲二段攻击
+    BOOMERANG_SPEED_MUL: 0.6,
+    BOOMERANG_CLIMB_Y: 330,
   };
 
-  // 七阵字段：interval 节奏/ballSpeed 球速/cast 预警/comboChance 连射/perilChance 危球/drift 横漂
-  // 血量五倍制（KICK_HP 同步 ×5，单阵节奏与旧三阵一致）
-  var WAVES = [
-    { sub: "第一阵", name: "巡场武生", hp: [600], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46 },
-    { sub: "第二阵", name: "疾风刀客", hp: [400], interval: 1.15, ballSpeed: 385, cast: 0.62, comboChance: 0.45, perilChance: 0, drift: 60 },
-    { sub: "主将战", name: "赤甲教头", hp: [450, 380], interval: 1.0, ballSpeed: 455, cast: 0.55, comboChance: 0.5, perilChance: 0.35, drift: 70 },
-    { sub: "第四阵", name: "夜鹞子", hp: [500], interval: 0.95, ballSpeed: 500, cast: 0.5, comboChance: 0.5, perilChance: 0.25, drift: 88 },
-    { sub: "第五阵", name: "铁猿双煞", hp: [400, 400], interval: 0.9, ballSpeed: 480, cast: 0.48, comboChance: 0.55, perilChance: 0.3, drift: 84 },
-    { sub: "第六阵", name: "危球天师", hp: [650], interval: 0.85, ballSpeed: 530, cast: 0.45, comboChance: 0.5, perilChance: 0.55, drift: 96 },
-    { sub: "宗师战", name: "镇场宗师 · 白眉", hp: [500, 450, 400], interval: 0.78, ballSpeed: 570, cast: 0.42, comboChance: 0.6, perilChance: 0.4, drift: 110 },
+  // 二十关 = 4 章 × 5 关，每章第 5 关守关（多管血）。
+  // 字段：interval 节奏/ballSpeed 球速/cast 预警/comboChance 连射/perilChance 危球/drift 横漂
+  //      mix 新球种混入率 {curve 弧线/split 分裂/heavy 重球/boomerang 回旋危球}
+  // 一章纯普通球定型；二章危球识读；三章弧线→分裂→重球逐个登场；四章回旋危球+全混编。
+  // 血量五倍制（KICK_HP 同步 ×5，单关节奏与旧七阵一致）
+  var LEVELS = [
+    // 第一章 · 基本功（纯普通球）
+    { sub: "第 1 关", name: "巡场武生", hp: [600], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46, mix: {} },
+    { sub: "第 2 关", name: "快枪教习", hp: [450], interval: 1.3, ballSpeed: 360, cast: 0.72, comboChance: 0.3, perilChance: 0, drift: 56, mix: {} },
+    { sub: "第 3 关", name: "连珠炮手", hp: [500], interval: 1.15, ballSpeed: 390, cast: 0.66, comboChance: 0.5, perilChance: 0, drift: 64, mix: {} },
+    { sub: "第 4 关", name: "夜行刀客", hp: [550], interval: 1.05, ballSpeed: 420, cast: 0.6, comboChance: 0.5, perilChance: 0, drift: 72, mix: {} },
+    { sub: "守关战", name: "赤甲教头", hp: [480, 400], interval: 0.95, ballSpeed: 450, cast: 0.55, comboChance: 0.55, perilChance: 0, drift: 78, mix: {} },
+    // 第二章 · 危球识读
+    { sub: "第 6 关", name: "红灯信使", hp: [550], interval: 1.1, ballSpeed: 440, cast: 0.6, comboChance: 0.4, perilChance: 0.25, drift: 80, mix: {} },
+    { sub: "第 7 关", name: "危球学徒", hp: [600], interval: 1.0, ballSpeed: 460, cast: 0.56, comboChance: 0.45, perilChance: 0.35, drift: 86, mix: {} },
+    { sub: "第 8 关", name: "双刃婆子", hp: [620], interval: 0.95, ballSpeed: 480, cast: 0.52, comboChance: 0.5, perilChance: 0.4, drift: 90, mix: {} },
+    { sub: "第 9 关", name: "暗影镖师", hp: [650], interval: 0.9, ballSpeed: 500, cast: 0.5, comboChance: 0.55, perilChance: 0.45, drift: 96, mix: {} },
+    { sub: "守关战", name: "危球天师", hp: [550, 450], interval: 0.85, ballSpeed: 520, cast: 0.46, comboChance: 0.55, perilChance: 0.5, drift: 100, mix: {} },
+    // 第三章 · 花式弹反（弧线 → 分裂 → 重球逐个登场）
+    { sub: "第 11 关", name: "弧月书生", hp: [650], interval: 1.0, ballSpeed: 470, cast: 0.55, comboChance: 0.45, perilChance: 0.2, drift: 90, mix: { curve: 0.5 } },
+    { sub: "第 12 关", name: "弯刀胡旋", hp: [700], interval: 0.95, ballSpeed: 490, cast: 0.52, comboChance: 0.5, perilChance: 0.25, drift: 96, mix: { curve: 0.65 } },
+    { sub: "第 13 关", name: "裂帛娘子", hp: [700], interval: 0.95, ballSpeed: 480, cast: 0.52, comboChance: 0.45, perilChance: 0.2, drift: 92, mix: { split: 0.5 } },
+    { sub: "第 14 关", name: "铁锤太岁", hp: [800], interval: 1.05, ballSpeed: 460, cast: 0.6, comboChance: 0.4, perilChance: 0.2, drift: 80, mix: { heavy: 0.55 } },
+    { sub: "守关战", name: "花样双煞", hp: [550, 500], interval: 0.88, ballSpeed: 510, cast: 0.48, comboChance: 0.55, perilChance: 0.3, drift: 100, mix: { curve: 0.3, split: 0.3, heavy: 0.25 } },
+    // 第四章 · 回旋绝杀（回旋危球 + 全混编；peril+mix 总和 ≤0.9 留普通球余量）
+    { sub: "第 16 关", name: "回马枪客", hp: [700], interval: 0.95, ballSpeed: 500, cast: 0.52, comboChance: 0.5, perilChance: 0.15, drift: 100, mix: { boomerang: 0.4 } },
+    { sub: "第 17 关", name: "幻影先生", hp: [750], interval: 0.9, ballSpeed: 520, cast: 0.48, comboChance: 0.55, perilChance: 0.25, drift: 106, mix: { curve: 0.35, boomerang: 0.3 } },
+    { sub: "第 18 关", name: "疾风雷神", hp: [780], interval: 0.85, ballSpeed: 545, cast: 0.46, comboChance: 0.6, perilChance: 0.2, drift: 112, mix: { split: 0.25, heavy: 0.25, boomerang: 0.2 } },
+    { sub: "第 19 关", name: "万象道人", hp: [800], interval: 0.82, ballSpeed: 560, cast: 0.44, comboChance: 0.6, perilChance: 0.15, drift: 118, mix: { curve: 0.2, split: 0.2, heavy: 0.2, boomerang: 0.15 } },
+    { sub: "宗师战", name: "镇场宗师 · 白眉", hp: [550, 480, 420], interval: 0.78, ballSpeed: 580, cast: 0.42, comboChance: 0.65, perilChance: 0.2, drift: 125, mix: { curve: 0.2, split: 0.2, heavy: 0.15, boomerang: 0.15 } },
   ];
 
   function mulberry32(seed) {
@@ -137,11 +175,20 @@
     };
   }
 
+  // damageTaken 是三星评价（无伤）的依据；其余为结算展示/平衡测试用
+  function freshStats() {
+    return {
+      perfectKicks: 0, lowKicks: 0, dashThroughs: 0, perfectDashes: 0,
+      flailBounces: 0, pebbleHits: 0, pebbleBlocks: 0,
+      returnHits: 0, kills: 0, clearT: 0, damageTaken: 0,
+    };
+  }
+
   function Game(rng) {
     this.rng = rng || Math.random;
-    this.mode = "title"; // title|fight|death|victory
+    this.mode = "title"; // title|select|fight|death|victory
     this.time = 0;
-    this.waveIndex = -1;
+    this.waveIndex = -1; // 当前关卡下标（LEVELS）
     this.player = makePlayer();
     this.enemy = null;
     this.balls = [];
@@ -151,14 +198,16 @@
     this.fx = [];
     this.shake = 0;
     this.banner = null;
-    this.stats = {
-      perfectKicks: 0, lowKicks: 0, dashThroughs: 0, perfectDashes: 0,
-      flailBounces: 0, pebbleHits: 0,
-      returnHits: 0, kills: 0, clearT: 0,
-    };
+    this.stats = freshStats();
   }
 
   Game.prototype.start = function () {
+    this.startLevel(0);
+  };
+
+  // 选关版：直接空降第 i 关，玩家/球/特效/统计全部重置
+  Game.prototype.startLevel = function (i) {
+    i = clamp(Math.floor(i) || 0, 0, LEVELS.length - 1);
     this.mode = "fight";
     this.waveIndex = -1;
     this.time = 0;
@@ -166,12 +215,15 @@
     this.balls = [];
     this.fx = [];
     this.floatTexts = [];
-    this.stats = {
-      perfectKicks: 0, lowKicks: 0, dashThroughs: 0, perfectDashes: 0,
-      flailBounces: 0, pebbleHits: 0,
-      returnHits: 0, kills: 0, clearT: 0,
-    };
-    this.spawnWave(0);
+    this.stats = freshStats();
+    this.spawnWave(i);
+  };
+
+  // 回选关界面：战斗冻结（update 非 fight 不推进），飞球清场
+  Game.prototype.toSelect = function () {
+    this.mode = "select";
+    this.balls = [];
+    this.banner = null;
   };
 
   // 死亡后重开本波（友好规则，不回第一波）
@@ -186,7 +238,7 @@
 
   Game.prototype.spawnWave = function (i) {
     this.waveIndex = i;
-    var w = WAVES[i];
+    var w = LEVELS[i];
     this.enemy = {
       wave: w,
       name: w.name,
@@ -249,7 +301,7 @@
       this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "闪身步", "#7fe4ef", 22, 0.7);
       this.events.push("dash");
       // 品质在按下瞬间定死，不等接触（否则乱按闪身能白嫖：最后一次按下总是近距离）：
-      //  有球且 ≤10cm 线：完美待命——穿到或躲开都弹 Perfect 并计连击
+      //  有球且 ≤6cm 线：完美待命——穿到或躲开都弹 Perfect 并计连击
       //  有球但 >线：早闪！立刻断连击并结算本闪（后续穿到也只算侥幸不给奖励）
       //  没球：老规矩——走完没处置球 = 空闪断链；按下后生成的球接触仍按反推定品质
       p.dashPressX = p.x; p.dashScored = false; p.dashJudged = false; p.dashPerfect = false;
@@ -270,8 +322,8 @@
 
   // 盯球：找「最快越过玩家线」的下行球，记下按下瞬间直线距离。
   // 敌人瞄原位发球，闪身移开后球大多落空——躲开它本来就是一次成功闪身。
-  // ETA 不设固定上限：球速倍率调低时 10cm 线内的慢球 ETA 可能 >1.8s，
-  // 固定上限会让它漏盯、与穿球路径共用 427 线定品质的承诺打架；品质由 dist 单线把关。
+  // ETA 不设固定上限：球速倍率调低时 6cm 线内的慢球 ETA 可能 >1.8s，
+  // 固定上限会让它漏盯、与穿球路径共用 256 线定品质的承诺打架；品质由 dist 单线把关。
   Game.prototype.pickDashWatch = function () {
     var p = this.player;
     var best = null, bestT = Infinity;
@@ -613,16 +665,32 @@
     }
   };
 
+  // 混编抽球：一次掷骰按 危球 → 回旋危球 → 弧线 → 分裂 → 重球 累加命中，
+  // 落空才是普通球。perilChance + mix 总和配表约束 ≤0.95（留普通球余量）
   Game.prototype.chooseAttack = function () {
     var e = this.enemy, w = e.wave;
-    var peril = w.perilChance > 0 && this.rng() < w.perilChance;
+    var mix = w.mix || {};
+    var r = this.rng();
+    var acc = w.perilChance || 0;
+    var kind = "normal";
+    if (r < acc) kind = "peril";
+    else if (r < (acc += mix.boomerang || 0)) kind = "boomerang";
+    else if (r < (acc += mix.curve || 0)) kind = "curve";
+    else if (r < (acc += mix.split || 0)) kind = "split";
+    else if (r < (acc += mix.heavy || 0)) kind = "heavy";
+    var perilous = kind === "peril" || kind === "boomerang";
     e.state = "telegraph";
     e.stateT = 0;
     e.lastBeat = 0;
-    e.castKind = peril ? "peril" : "normal";
-    e.castDur = w.cast * (peril ? 1.35 : 1);
-    e.comboLeft = (!peril && w.comboChance > 0 && this.rng() < w.comboChance) ? 1 : 0;
-    this.events.push(peril ? "peril" : "telegraph");
+    e.castKind = kind;
+    e.castDur = w.cast * (perilous ? 1.35 : 1);
+    e.comboLeft = (!perilous && w.comboChance > 0 && this.rng() < w.comboChance) ? 1 : 0;
+    this.events.push(perilous ? "peril" : "telegraph");
+  };
+
+  var FIRE_EVENT = {
+    normal: "fire", peril: "perilFire", boomerang: "boomerangFire",
+    curve: "curveFire", split: "splitFire", heavy: "heavyFire",
   };
 
   Game.prototype.fireBall = function (e) {
@@ -634,13 +702,19 @@
     var dy = CFG.PLAYER_Y - CFG.ENEMY_Y;
     var len = Math.sqrt(dx * dx + dy * dy);
     var spd = w.ballSpeed * (CFG.BALL_SPEED_MUL || 1);
-    this.balls.push({
+    if (e.castKind === "heavy") spd *= CFG.HEAVY_SPEED_MUL;
+    else if (e.castKind === "boomerang") spd *= CFG.BOOMERANG_SPEED_MUL;
+    var b = {
       x: e.x, y: CFG.ENEMY_Y + 14,
       vx: (dx / len) * spd,
       vy: (dy / len) * spd,
       kind: e.castKind, dir: "down", dead: false, returned: false,
-    });
-    this.events.push(e.castKind === "peril" ? "perilFire" : "fire");
+    };
+    if (e.castKind === "curve") b.curveDir = this.rng() < 0.5 ? -1 : 1;
+    if (e.castKind === "heavy") b.r = CFG.HEAVY_R;
+    if (e.castKind === "boomerang") b.passes = 0;
+    this.balls.push(b);
+    this.events.push(FIRE_EVENT[e.castKind] || "fire");
 
     if (e.comboLeft > 0) {
       e.comboLeft = 0;
@@ -659,19 +733,86 @@
 
   /* ---------- 球 / 碰撞 ---------- */
 
+  // 飞蝗石截球：必须先于一切碰撞结算——同帧石球相遇时球要算被击落，不能砸到玩家
+  Game.prototype.pebbleIntercept = function (dt) {
+    var p = this.player;
+    for (var i = 0; i < this.balls.length; i++) {
+      var s = this.balls[i];
+      if (s.dead || !s.pebble) continue;
+      for (var j = 0; j < this.balls.length; j++) {
+        var o = this.balls[j];
+        if (o.dead || o.pebble || o.dir !== "down") continue;
+        // 两者本帧均匀速：相对轨迹是直线，取帧内最近距离（扫掠判定，防高速穿透）
+        var rx = o.x - s.x, ry = o.y - s.y;
+        var vx = (o.vx - s.vx) * dt, vy = (o.vy - s.vy) * dt;
+        var den = vx * vx + vy * vy;
+        var u = den > 0 ? -(rx * vx + ry * vy) / den : 0;
+        if (u < 0) u = 0; else if (u > 1) u = 1;
+        var cx = rx + vx * u, cy = ry + vy * u;
+        if (cx * cx + cy * cy <= CFG.PEBBLE_BLOCK_R * CFG.PEBBLE_BLOCK_R) {
+          this.blockBall(s, o, u * dt);
+          break; // 一颗石子只换一颗球
+        }
+      }
+    }
+  };
+
+  // 一石换一球：双双消散；若被截的正是闪身盯球，盯球作废（闪身不领奖励）
+  Game.prototype.blockBall = function (s, o, udt) {
+    var mx = (s.x + s.vx * udt + o.x + o.vx * udt) / 2;
+    var my = (s.y + s.vy * udt + o.y + o.vy * udt) / 2;
+    if (this.player.dashWatch && this.player.dashWatch.b === o) this.player.dashWatch = null;
+    s.dead = true;
+    o.dead = true;
+    this.stats.pebbleBlocks++;
+    this.spawnSparks(mx, my, 9, o.kind === "peril" ? "#ffb3a8" : "#cfe8ff", 0.8);
+    this.spawnRing(mx, my, o.kind === "peril" ? "#ff8a7a" : "#bcd8ff");
+    this.spawnFloat(mx, my - 14, "击落", "#cfe8ff", 16, 0.7);
+    this.events.push("pebbleBlock");
+  };
+
   Game.prototype.ballsTick = function (dt) {
     var p = this.player, e = this.enemy;
+    this.pebbleIntercept(dt);
     for (var i = 0; i < this.balls.length; i++) {
       var b = this.balls[i];
       if (b.dead) continue;
+      // 弧线球：下行途中持续侧向加速，球路是弯的（可读性=看得到弧）
+      if (b.kind === "curve" && b.dir === "down") b.vx += (b.curveDir || 1) * CFG.CURVE_ACCEL * dt;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
 
       if (b.dir === "down") {
-        var hitP = Math.abs(b.x - p.x) <= CFG.HIT_HALF_W &&
+        // 分裂球：本帧越过中场线才炸成 2 颗普通球（穿越语义：已在场下的球不炸；
+        // 子球 kind=normal 不会二次分裂）
+        if (b.kind === "split" && b.vy > 0 &&
+          b.y >= CFG.SPLIT_Y && b.y - b.vy * dt < CFG.SPLIT_Y) { this.splitBall(b); continue; }
+        // vy>0 才伤人：回旋危球爬升段（vy<0）从玩家身边退开，不该判定命中
+        var hitP = b.vy > 0 &&
+          Math.abs(b.x - p.x) <= CFG.HIT_HALF_W &&
           b.y >= CFG.PLAYER_Y - CFG.HIT_HALF_H &&
           b.y <= CFG.PLAYER_Y + CFG.HIT_HALF_H;
         if (hitP) { this.resolveIncoming(b); continue; }
+        // 回旋危球：第一次过线不结算，掉头爬升；爬过折返点重新俯冲；
+        // 第二段（passes>=2）过线才按正常躲开/出界结算
+        if (b.kind === "boomerang") {
+          if (b.vy > 0 && b.y > CFG.PLAYER_Y + CFG.HIT_HALF_H) {
+            if ((b.passes || 0) >= 1) {
+              b.passes = 2;
+              this.scoreDashDodge(b);
+              if (b.y > CFG.WORLD_H + 24) { b.dead = true; this.events.push("miss"); }
+            } else {
+              b.passes = 1;
+              b.vy = -Math.abs(b.vy);
+              this.spawnFloat(b.x, CFG.PLAYER_Y + 44, "回马枪", "#ffb3a8", 18, 0.8);
+              this.events.push("boomerangTurn");
+            }
+          } else if (b.vy < 0 && b.y <= CFG.BOOMERANG_CLIMB_Y) {
+            b.vy = Math.abs(b.vy);
+            this.events.push("boomerangDive");
+          }
+          continue;
+        }
         // 越过玩家线还没碰到人：若本次闪身盯的是它 → 躲开成功，结算品质
         if (b.y > CFG.PLAYER_Y + CFG.HIT_HALF_H) this.scoreDashDodge(b);
         if (b.y > CFG.WORLD_H + 24) { b.dead = true; this.events.push("miss"); }
@@ -687,6 +828,21 @@
       }
     }
     this.balls = this.balls.filter(function (b) { return !b.dead; });
+  };
+
+  // 分裂球炸开：母球消散，原地分出 2 颗左右分飞的普通球（子球 normal，不再炸）
+  Game.prototype.splitBall = function (b) {
+    b.dead = true;
+    for (var s = -1; s <= 1; s += 2) {
+      this.balls.push({
+        x: b.x, y: b.y,
+        vx: b.vx + s * CFG.SPLIT_SPREAD, vy: b.vy,
+        kind: "normal", dir: "down", dead: false, returned: false, splitChild: true,
+      });
+    }
+    this.spawnSparks(b.x, b.y, 8, "#d8c8ff", 0.7);
+    this.spawnFloat(b.x, b.y - 18, "裂帛", "#d8c8ff", 16, 0.6);
+    this.events.push("splitPop");
   };
 
   // 把来球改写成朝敌人飞回的反弹球（完美踢与狗熊哆嗦毛共用同一条轨迹）
@@ -729,8 +885,8 @@
       return;
     }
 
-    // 危球：踢无效，只能无敌帧穿
-    if (b.kind === "peril") {
+    // 危球族（红危球 / 回旋危球）：踢无效，只能无敌帧穿
+    if (b.kind === "peril" || b.kind === "boomerang") {
       b.dead = true;
       if (p.invuln > 0) {
         this.stats.dashThroughs++;
@@ -789,8 +945,9 @@
       return;
     }
 
-    // 裸吃
-    this.damagePlayer(CFG.E_HP, CFG.HURT_P_POST, false);
+    // 裸吃（重球更疼）
+    if (b.kind === "heavy") this.damagePlayer(CFG.HEAVY_HP, CFG.HEAVY_P_POST, false);
+    else this.damagePlayer(CFG.E_HP, CFG.HURT_P_POST, false);
   };
 
   Game.prototype.resolveReturnHit = function (b) {
@@ -821,8 +978,8 @@
       return;
     }
 
-    // 狗熊哆嗦毛弹回的球伤害减半（架势/处决不打折）
-    e.hp -= b.flail ? CFG.FLAIL_KICK_HP : CFG.KICK_HP;
+    // 狗熊哆嗦毛弹回的球伤害减半（架势/处决不打折）；重球踢回高伤——高风险高回报
+    e.hp -= b.flail ? CFG.FLAIL_KICK_HP : (b.kind === "heavy" ? CFG.HEAVY_KICK_HP : CFG.KICK_HP);
     e.posture += CFG.PERFECT_E_POST;
     e.postDelay = CFG.E_POST_DELAY;
     this.stats.returnHits++;
@@ -852,6 +1009,7 @@
     this.resetCombo(); // 挨揍了，连招断了
     p.dashWatch = null; // 盯球闪身作废：球没躲开
     p.hp -= hpDmg;
+    this.stats.damageTaken += hpDmg; // 三星评价（无伤）依据
     p.posture += postDmg;
     p.postDelay = CFG.P_POST_DELAY;
     if (p.state !== "break") {
@@ -884,26 +1042,41 @@
     }
   };
 
+  // 选关版：每关独立——打死本关最后一名敌人即通关，回选关界面点下一关
+  //（不再连锁推进；狗熊哆嗦毛 5s 长状态在结算遮罩下自然定格，不硬切姿态）
   Game.prototype.advanceWave = function () {
-    if (this.waveIndex + 1 < WAVES.length) {
-      this.balls = [];
-      this.spawnWave(this.waveIndex + 1);
-      // 狗熊哆嗦毛是 5s 长状态：波次切换不打断（dash/hurt 等短状态照旧重置）。
-      // 弹回处决杀穿本波正是大招的高光时刻，切走既违背 5s 承诺又让姿态硬跳
-      if (this.player.state !== "flail") {
-        this.player.state = "idle";
-        this.player.stateT = 0;
-      }
-    } else {
-      this.mode = "victory";
-      this.balls = []; // 结算遮罩下不留飞球
-      this.stats.clearT = this.time;
-      this.events.push("victory");
-    }
+    this.mode = "victory";
+    this.balls = []; // 结算遮罩下不留飞球
+    this.stats.clearT = this.time;
+    this.events.push("victory");
   };
 
+  /* ---------- 三星评价 / 进度（纯函数，main.js 负责持久化） ---------- */
+
+  // ★ 通关保底；★ 无伤（damageTaken==0）；★ 无伤且无蹩脚踢
+  function starsFor(game) {
+    var s = game.stats;
+    if (s.damageTaken > 0) return 1;
+    if (s.lowKicks > 0) return 2;
+    return 3;
+  }
+
+  function emptyProgress() {
+    return { unlocked: 1, stars: {} };
+  }
+
+  // 通关第 idx 关：解锁下一关（封顶 20），星星取历史最高；不改原对象
+  function recordClear(progress, idx, stars) {
+    var next = { unlocked: progress.unlocked, stars: {} };
+    for (var k in progress.stars) next.stars[k] = progress.stars[k];
+    next.unlocked = Math.min(LEVELS.length, Math.max(progress.unlocked, idx + 2));
+    next.stars[idx] = Math.max(progress.stars[idx] || 0, stars);
+    return next;
+  }
+
   return {
-    Game: Game, CFG: CFG, WAVES: WAVES,
+    Game: Game, CFG: CFG, LEVELS: LEVELS,
     mulberry32: mulberry32, telegraphBeat: telegraphBeat,
+    starsFor: starsFor, emptyProgress: emptyProgress, recordClear: recordClear,
   };
 });

@@ -44,6 +44,7 @@ async function shot(name) {
 /* 页面脚本前给 AudioContext 装节点计数器（headless 下 context suspended，但节点照常创建） */
 await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__audioCounts = { osc: 0, buffer: 0 };
+  window.__audioBufDurations = [];
   (function () {
     if (!globalThis.AudioContext) return;
     const po = AudioContext.prototype.createOscillator;
@@ -54,7 +55,13 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
     const pb = AudioContext.prototype.createBufferSource;
     AudioContext.prototype.createBufferSource = function () {
       window.__audioCounts.buffer++;
-      return pb.call(this);
+      const s = pb.call(this);
+      const pstart = s.start.bind(s);
+      s.start = function (when) {
+        window.__audioBufDurations.push(this.buffer ? this.buffer.duration : -1);
+        return pstart(when);
+      };
+      return s;
     };
   })();
 ` });
@@ -65,13 +72,26 @@ await send("Emulation.setDeviceMetricsOverride", { width: 450, height: 800, devi
 await send("Page.navigate", { url: "http://127.0.0.1:8821/harness/index.html?movesprobe=1&sound=1" });
 await sleep(1200);
 
+// 显式解锁音频并等大招采样预热完成（真用户在首次点按时解锁；这里无手势直接调）
+await evalJs(`__kickball.audio.unlock()`);
+for (let i = 0; i < 40; i++) {
+  const fetched = await evalJs(
+    `performance.getEntriesByType('resource').some((e) => e.name.includes('flail.mp3'))`
+  );
+  if (fetched) break;
+  await sleep(100);
+}
+await sleep(300); // 留 decodeAudioData 落定时间
+
 const floats = () => evalJs(`__kickball.game.floatTexts.map((t) => t.text)`);
-const counts = () => evalJs(`JSON.parse(JSON.stringify(window.__audioCounts))`);
+const counts = () => evalJs(
+  `JSON.parse(JSON.stringify({ ...window.__audioCounts, durs: window.__audioBufDurations }))`
+);
 
 /* 1. 闪身步：起步瞬间出字 + whoosh（1 噪声源 + 1 振荡器） */
 await evalJs(`__kickball.game.start()`);
 await sleep(200);
-await evalJs(`window.__audioCounts.osc = 0; window.__audioCounts.buffer = 0; __kickball.game.press("dash")`);
+await evalJs(`window.__audioCounts.osc = 0; window.__audioCounts.buffer = 0; window.__audioBufDurations = []; __kickball.game.press("dash")`);
 await sleep(220); // 事件在 rAF 帧头排空播音
 const dashTexts = await floats();
 const dashAudio = await counts();
@@ -79,7 +99,7 @@ console.log("dash floats:", JSON.stringify(dashTexts), "audio:", JSON.stringify(
 await shot("move-dash.png");
 
 /* 2. 崩架势「哆嗦毛…」：架势满崩溃 → 半截飘字 + 6 抖音 + 1 噪声 */
-await evalJs(`window.__audioCounts.osc = 0; window.__audioCounts.buffer = 0; __kickball.game.player.posture = 100`);
+await evalJs(`window.__audioCounts.osc = 0; window.__audioCounts.buffer = 0; window.__audioBufDurations = []; __kickball.game.player.posture = 100`);
 await sleep(260);
 const breakTexts = await floats();
 const breakAudio = await counts();
@@ -104,8 +124,8 @@ console.log("deathblow:", JSON.stringify(dbResult));
 await sleep(80);
 await shot("move-deathblow.png");
 
-/* 4. 狗熊哆嗦毛大招：三次「完美闪身」（按下时球距 ≤128px/3cm）触发
-      → 飘「狗熊哆嗦毛！」+ 花鼓灯「隆·咚·哐」循环鼓点（10 组：40 osc/30 buffer）；
+/* 4. 狗熊哆嗦毛大招：三次「完美闪身」（按下时球距 ≤256px/6cm）触发
+      → 飘「狗熊哆嗦毛！」+ 真录音采样 assets/snd/flail.mp3（1 个 ~2.9s BufferSource，0 合成鼓点）；
         手舞足蹈期间来球（含危球）全部弹回。
       冻 rAF 步进、手动逐帧确定性驱动，事件当场喂 audio 做节点计数 */
 const flailResult = await evalJs(`(function () {
@@ -122,7 +142,10 @@ const flailResult = await evalJs(`(function () {
   K.start(); // 干净第一波：抹掉前三个场景的崩架势/处决残留
   for (const ev of K.events) __kickball.audio.onEvent(ev);
   K.events.length = 0;
-  window.__audioCounts.osc = 0; window.__audioCounts.buffer = 0;
+  window.__audioCounts.osc = 0; window.__audioCounts.buffer = 0; window.__audioBufDurations = [];
+  window.__flailEvents = [];
+  const __origOnEvent = __kickball.audio.onEvent.bind(__kickball.audio);
+  __kickball.audio.onEvent = (ev) => { window.__flailEvents.push(ev); __origOnEvent(ev); };
 
   for (let c = 0; c < 3; c++) {
     K.balls.length = 0;
@@ -156,9 +179,13 @@ const flailResult = await evalJs(`(function () {
   };
   K.update = real; // 交还主循环（acc 有钳制，不会爆补帧）
   K.events.length = 0;
+  out.events = window.__flailEvents;
   return out;
 })()`);
 const flailAudio = await counts();
+// 采样 BufferSource 时长 ≈2.9s；其余 buffer 是 ≤0.3s 的 whoosh 短噪声
+const flailSamples = (flailAudio.durs || []).filter((d) => d > 2.5).length;
+const flailShortBufs = (flailAudio.durs || []).filter((d) => d <= 0.3).length;
 const bounceResult = flailResult.bounce;
 console.log("flail:", JSON.stringify(flailResult), "audio:", JSON.stringify(flailAudio));
 await shot("move-flail.png");
@@ -172,7 +199,8 @@ const ok =
   dbResult.texts.includes("黑虎掏心！") && dbResult.hp === 0 &&
   flailResult.state0 === "flail" && flailResult.perfectDashes === 3 &&
   flailResult.throughs === 3 && flailResult.texts.includes("狗熊哆嗦毛！") &&
-  flailAudio.osc >= 40 && flailAudio.buffer >= 30 &&
+  flailSamples === 1 && flailShortBufs === 3 && flailAudio.osc <= 12 && // 采样播 1 次、无 40 振荡器鼓海
+  flailAudio.durs[flailAudio.durs.length - 1] > 2.5 && // 最后一声就是大招采样（flail 事件在弹回音之前）
   bounceResult.state === "flail" && bounceResult.hp === 500 && // MAX_HP 已 ×5（500），弹回期间零掉血
   bounceResult.bounces === 2 && bounceResult.up === 2 &&
   errors.length === 0;
