@@ -41,6 +41,9 @@
     <button id="dbg-apply">保存并重开</button>
     <button id="dbg-reset" class="ghost">恢复默认</button>
   </div>
+  <div class="row">
+    <button id="dbg-unlock" class="ghost">解锁全部关卡（刷新）</button>
+  </div>
   <div class="tip">判定类即时生效；血量/波次类点「保存并重开」生效。配置存 localStorage。</div>
 </div>
 <script>
@@ -110,9 +113,15 @@ globalThis.tt = {
     return new AudioContext();
   },
   // 选关进度存档：浏览器用 localStorage 兜底 tt 本地缓存
+  // harness 是开发联调页：无存档时默认 20 关全开（stars 空=未打星，只解锁），
+  // 方便随意选关；真机线性解锁规则在 core/main 内，不受影响
   getStorageSync: k => {
     const v = localStorage.getItem(k);
-    return v == null ? "" : v;
+    if (v == null || v === "") {
+      if (k === "kickball_progress_v1") return JSON.stringify({ unlocked: 20, stars: {} });
+      return "";
+    }
+    return v;
   },
   setStorageSync: (k, v) => localStorage.setItem(k, String(v)),
   // 测试钩子：tt._life.show()/hide() 手动触发生命周期
@@ -190,6 +199,18 @@ load('js/main.js');
     localStorage.removeItem(STORE_KEY);
     box.querySelectorAll('input').forEach((inp) => { inp.value = defaults[inp.dataset.key]; });
     KB.game.start();
+  };
+
+  // 选关全开：保留已得星星，只把 unlocked 顶到 20 后刷新生效
+  document.getElementById('dbg-unlock').onclick = () => {
+    const PROGRESS_KEY = 'kickball_progress_v1';
+    let p = { unlocked: 20, stars: {} };
+    try {
+      const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}');
+      if (saved && typeof saved === 'object') p = { stars: {}, ...saved, unlocked: 20 };
+    } catch (e) { /* 坏存档直接用全开快照 */ }
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+    location.reload();
   };
 })();
 </script>
