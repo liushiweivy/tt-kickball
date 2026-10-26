@@ -363,3 +363,16 @@ render-only，core.js 零改动。起因：除闪身（上一轮返工）外，�
 - **TDD**：新增 skin.test.mjs 6 例（配表仅 LEVELS[0] 有 skin 且名「奶龙」；三路径回退 false；六状态+伪状态选图、脚底中心锚定；crouch 压扁/bodyLift 上移；drawScene 第1关走 drawImage、第2关零 drawImage 且火柴人 stroke≥3）；recordingCtx 用 Proxy 兜底全部 ctx 方法，补 createRadialGradient（drawBackdrop 用）。双端各 **113/113**
 - **真机尺寸目检**：tools/cdp-skins.mjs（无头 Edge 9333 + 8821，冻 rAF 手动 drawScene）截 8 帧：idle/telegraph/hurt/stagger/rise/dead/选关/第2关对照；坑=冻 rAF 的 headless 解码慢，等待须 2500ms（1000ms 时图未就绪全回退火柴人）；倒下帧奶龙横在城楼台上
 - **微信送审**：6 张效果图（六宫格 nailong-effects.png 拼图+5 关键帧）经 wechat-claude-bridge/tools/send_self_images.py（venv，CF_DIB 剪贴板+UIA 头像进 simple 自聊窗）发送成功
+
+## 2026-10-26（十九）招式谱成长系统：9 招通关自悟 + 四章原创矢量角色 + 瞬身踢（双端 133 测）
+
+- **需求三连**：「角色没有成长性」→ 拍板招式/技能解锁（通关章节自动悟，不加存档字段，由 `{unlocked,stars}` 纯派生）；「引入不侵权角色：一层咕嘎、二层大将、三层刀盾、四层奶龙」→ 整章换 Canvas 原创矢量皮（零素材零版权，奶龙沿用位图）；「加个招式闪现到身边踢一脚然后回来」→ 第 9 招瞬身踢（独立按钮「瞬」，CD 12s）
+- **招式谱 `js/skills.js`**（新 UMD 纯函数）：SKILL_DEFS 9 条 `{id,name,icon,chapter,cond,desc}`；`unlockedFor(progress)` 返回 id 数组不改原对象。条件两类：reach=unlocked≥n（连闪步2/手里剑6/梨花摆11/锣鼓催16/瞬身踢18）、clear=stars[idx]≥1（揽月式4/指路灯9/金钟罩14/不倒翁19=通关奖励）。九招：连闪步=闪身途中二段续冲+无敌重发（每段一次，不重判品质防刷 Perfect）；揽月式=完美窗 0.20→0.28s；手里剑=飞蝗石强化替换（CD10→7、速640→900、伤5→12、命中+10 敌架势可致踉跄，按钮「石」→「剑」，投射物旋转十字）；指路灯=危球族下行画落点虚圈+「落」字（纯渲染）；梨花摆=完美踢顺带弹回 90px 内最近同族下行球（半伤不涨架势，危球族不参与）；金钟罩=每关首次架势满免崩（清零+0.6s 无敌）；锣鼓催=大招连击 3→2；瞬身踢=0.6s 冲-踢-回（45伤28架势=完美踢档，踉跄中=忍杀复用黑虎掏心全链，全程无敌，回到原点，不占 returnHits 统计）；不倒翁=每关首次致命伤留 1 血+1s 无敌
+- **注入方式零污染**：`game.setSkills(list)`+`hasSkill(id)`，默认无技能→全部走原分支（回归测试钉死：无技能 blink 无效/石 CD10/完美窗 0.20/崩体无罩）；`bumpCombo/resolveIncoming/damagePlayer/playerTick` 九处挂钩全部 hasSkill 门控；解锁由 main.js 在载入与 onVictory 时 `unlockedFor(progress)` 重算注入
+- **四章角色 `js/vskins.js`**（新 UMD 零依赖）：脚底锚 (0,0) 高约 112 逻辑像素，state 参数化（telegraph 举械）、tint=boss 加红头带/红缨等——**咕嘎**=奶白圆鸟（桔嘴/腮红/呆毛/翅膀，boss 红头带怒眉）、**大将**=玄甲武人（红缨盔/肩甲/护心镜/长戟）、**刀盾**=青袍（斗笠/左圆盾/右环首刀，boss 红缨）。LEVELS 整章配皮 skin+skinScale 梯度（0.85→1.18 递增显威），守关 idx4/9/14 skinTint:"boss"；改名 L1 咕嘎仔/L5 咕嘎大王/L10 大将/L15 刀盾教头/L20 奶龙王，数值玩法零改动
+- **skins.js 重写**：SKIN_CONF 支持矢量条目 `{h,draw}` 与位图混编，`drawSkinFigure(...,opts={scale,tint})` 统一入口（矢量恒 ready 返回 true；位图未就绪仍 false 回退火柴人）；奶龙 tint=boss 头顶画金色小王冠=奶龙王
+- **UI**：选关页底部金框胶囊「招 式 谱 · 已悟 n/9」→ 招式谱屏（3×3 卡片：图标/名/章节/效果，未解锁显 ？？？+条件文案「打到第 N 关解锁」/「通关第 N 关解锁」，底部返回）；战斗屏瞬身踢第 6 按钮（仅解锁出现，冷却扇形）、手里剑十字镖、落点虚圈
+- **harness**：修改器加「满星试炼（全招式）」按钮（写 20 关三星+unlocked20 → 9 招全开）；默认档（unlocked20 无星）只悟 reach 系 5 招，缺 4 招通关奖励符合设计
+- **TDD**：新增 skills.test.mjs 20 例（解锁规则 4+逐招内核 9+无技能回归+渲染集成 6：招式谱屏/瞬剑按钮按需/落点圈/十字镖零 drawImage/入口胶囊）；skin.test.mjs 重写为 20 关四章皮肤矩阵断言。坑：update 钳 dt≤0.05 须分帧走、梨花摆测试球避开 HIT_HALF_W=30 受击盒、浮点 0.2s 出脚点须 14 帧、空档显 ？？？非实名。双端各 **133/133**（113+20）
+- **真机截帧**：tools/cdp-skills.mjs 11 帧全目检过——四角色剪影零混淆（咕嘎圆鸟/大将盔甲长戟/刀盾斗笠盾刀/奶龙位图+王冠）、手里剑旋转镖、瞬身踢青色三段残影+飘字、指路灯双落点圈、招式谱 9 卡金框
+- **音效**：bell（98Hz 长钟+784 泛音）/revive（660→880 双升）/blink（噪声+锯 520→1240）/blinkHit（240→110 顿）/splashKick（980→1320）/splashHit（760）六事件

@@ -43,6 +43,7 @@
   </div>
   <div class="row">
     <button id="dbg-unlock" class="ghost">解锁全部关卡（刷新）</button>
+    <button id="dbg-fullstar" class="ghost">满星试炼（全招式）</button>
   </div>
   <div class="tip">判定类即时生效；血量/波次类点「保存并重开」生效。配置存 localStorage。</div>
 </div>
@@ -210,6 +211,14 @@ load('js/main.js');
       if (saved && typeof saved === 'object') p = { stars: {}, ...saved, unlocked: 20 };
     } catch (e) { /* 坏存档直接用全开快照 */ }
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+    location.reload();
+  };
+
+  // 满星试炼：20 关全三星 + unlocked 20 → 招式谱 9 招全开（含通关奖励「不倒翁」）
+  document.getElementById('dbg-fullstar').onclick = () => {
+    const stars = {};
+    for (let i = 0; i < 20; i++) stars[i] = 3;
+    localStorage.setItem('kickball_progress_v1', JSON.stringify({ unlocked: 20, stars }));
     location.reload();
   };
 })();

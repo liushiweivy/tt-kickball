@@ -5,9 +5,9 @@
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports)
-    module.exports = factory(require("./core.js"), require("./poses.js"), require("./skins.js"));
-  else root.KickballRender = factory(root.Kickball, root.KickballPoses, root.KickballSkins);
-})(typeof self !== "undefined" ? self : this, function (core, poses, skins) {
+    module.exports = factory(require("./core.js"), require("./poses.js"), require("./skins.js"), require("./skills.js"));
+  else root.KickballRender = factory(root.Kickball, root.KickballPoses, root.KickballSkins, root.KickballSkills);
+})(typeof self !== "undefined" ? self : this, function (core, poses, skins, skillsMod) {
   "use strict";
 
   var telegraphBeat = core.telegraphBeat;
@@ -34,6 +34,8 @@
     { id: "dash", kind: "tap", x: 298, y: 728, r: 42, label: "闪身" },
     { id: "kick", kind: "tap", x: 392, y: 728, r: 46, label: "踢" },
   ];
+  // 瞬身踢（招式）：第 6 按钮，仅解锁后参与绘制/命中；置于「石」正上方
+  var BUTTON_BLINK = { id: "blink", kind: "tap", x: 32, y: 668, r: 22, label: "瞬", font: "bold 15px sans-serif" };
 
   var COL = {
     ink: "#e8ecf8",
@@ -68,6 +70,12 @@
     });
   }
 
+  // 选关页底部「招式谱」入口（矩形命中区）；招式谱屏的返回按钮
+  var SKILL_ENTRY_ZONE = { id: "skills", x: 75, y: 668, w: 300, h: 44, label: "招式谱" };
+  var SKILLS_ZONES = [
+    { id: "back", x: W / 2 - 62, y: 736, w: 124, h: 44, label: "返回" },
+  ];
+
   // 结算遮罩按钮（矩形命中区）：胜利=下一关/选关，败北=重打/选关
   var VICTORY_ZONES = [
     { id: "next", x: W / 2 - 132, y: 588, w: 124, h: 52, label: "下一关" },
@@ -99,6 +107,15 @@
       ctx.restore();
       return;
     }
+    // 招式谱：选关的子屏，整屏替换
+    if (g.mode === "skills") {
+      ctx.save();
+      ctx.translate(view.offX, view.offY);
+      ctx.scale(view.scale, view.scale);
+      drawSkills(ctx, view.progress || core.emptyProgress());
+      ctx.restore();
+      return;
+    }
     var sx = 0, sy = 0;
     if (g.shake > 0) {
       sx = (Math.random() - 0.5) * g.shake * 14;
@@ -110,12 +127,13 @@
 
     drawPlatform(ctx);
     drawEnemy(ctx, g, view.time);
-    for (var i = 0; i < g.balls.length; i++) drawBall(ctx, g.balls[i]);
+    if (view.skills && view.skills.indexOf("lamp") >= 0) drawLandingRings(ctx, g, view.time); // 指路灯
+    for (var i = 0; i < g.balls.length; i++) drawBall(ctx, g.balls[i], view.time);
     drawPlayer(ctx, g, view);
     drawFx(ctx, g);
     drawFloatTexts(ctx, g);
     drawHud(ctx, g);
-    drawButtons(ctx, g, view.pressed, view.kickCooldown);
+    drawButtons(ctx, g, view);
     if (g.banner) drawBanner(ctx, g.banner);
     if (g.mode !== "fight") drawOverlay(ctx, g);
 
@@ -297,6 +315,24 @@
       return;
     }
 
+    // 瞬身踢：去程朝敌、回程朝家的拉身冲刺（双层残影）；出脚瞬间切踢姿
+    if (p.state === "blink") {
+      var going = p.stateT < CFG.BLINK_STRIKE;
+      var side = p.x === p.blinkFrom ? 1 : (p.x > p.blinkFrom ? 1 : -1);
+      var travel = going ? side : -side;
+      for (var bi = 1; bi <= 2; bi++) {
+        ctx.globalAlpha = 0.16 / bi;
+        drawDashing(ctx, x - travel * 20 * bi, y, dashPoseAt(0.45, travel), COL.dash, false);
+      }
+      ctx.globalAlpha = 1;
+      if (p.blinkHit && p.kickAnim > 0) {
+        drawDashing(ctx, x, y, kickPoseAt(1 - p.kickAnim / view.kickAnimDur), "#ffe9a8", true);
+      } else {
+        drawDashing(ctx, x, y, dashPoseAt(0.45, travel), COL.dash, true);
+      }
+      return;
+    }
+
     var pose;
     if (p.state === "hurt") {
       pose = hurtPoseAt(Math.min(1, p.stateT / CFG.HURT_PLAYER));
@@ -323,7 +359,7 @@
     }
 
     // 投影先画（不随后仰旋转）；绕脚底应用 lean（受击后仰 / 崩架势摇晃），
-    // 无敌帧外加青色微光（保险分支：当前 core 只有闪身给无敌帧）
+    // 无敌帧外加青色微光（闪身/大招/金钟罩/不倒翁/瞬身踢都会给无敌）
     drawShadow(ctx, x, y, 1);
     ctx.save();
     if (p.invuln > 0) {
@@ -409,7 +445,8 @@
     ctx.translate(-x, -y);
     // 位图皮肤（奶龙等）：图片就绪则替掉火柴人；未就绪/无皮肤回退 stick。
     // 投影、lean 后仰/倒地、蓄力球/鼓灯/危字、踉跄星星、死亡淡出都在外层共用。
-    if (!skins.drawSkinFigure(ctx, e.wave.skin, e.state, x, y, ep)) {
+    if (!skins.drawSkinFigure(ctx, e.wave.skin, e.state, x, y, ep,
+      { scale: e.wave.skinScale, tint: e.wave.skinTint })) {
       var enemyOpt = poseOpt(ep.pose, base);
       enemyOpt.scale = 1.12;
       stick(ctx, x, y, enemyOpt);
@@ -435,7 +472,61 @@
 
   /* ---------- 球 ---------- */
 
-  function drawBall(ctx, b) {
+  // 指路灯（招式）：危球族下行途中，在玩家线画落点虚圈（手绘分段弧，
+  // 不用 setLineDash——小游戏 2D context 不一定有）
+  function drawLandingRings(ctx, g, time) {
+    for (var i = 0; i < g.balls.length; i++) {
+      var b = g.balls[i];
+      if (b.dead || b.dir !== "down" || b.vy <= 0) continue;
+      if (b.kind !== "peril" && b.kind !== "boomerang") continue;
+      var col = KIND_COL[b.kind] || COL.peril;
+      var pulse = 0.4 + 0.25 * Math.sin(time * 10);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2.5;
+      for (var k = 0; k < 10; k++) {
+        var a0 = (k / 10) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(b.x, 690, 26, a0, a0 + Math.PI * 2 / 10 * 0.62);
+        ctx.stroke();
+      }
+      ctx.fillStyle = col;
+      ctx.font = "bold 13px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("落", b.x, 690);
+      ctx.restore();
+    }
+  }
+
+  // 手里剑（招式投射物）：旋转四叶十字，银刃金心
+  function drawShuriken(ctx, x, y, time) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(time * 18);
+    ctx.shadowColor = "#bcd8ff";
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = "#c8d2e8";
+    for (var i = 0; i < 4; i++) {
+      ctx.rotate(Math.PI / 2);
+      ctx.beginPath();
+      ctx.moveTo(0, -2);
+      ctx.lineTo(8.5, 0);
+      ctx.lineTo(0, 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#ffd45e";
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBall(ctx, b, time) {
+    if (b.pebble && b.shuriken) { drawShuriken(ctx, b.x, b.y, time || 0); return; }
     // 飞蝗石：冰蓝色小石子（半径 6，拖尾/光晕同步缩水）；
     // 新球种按 KIND_COL 配色，重球半径大一号；踢回的球一律金色（战果不认出身）
     var col = b.pebble ? "#cfe8ff"
@@ -586,13 +677,27 @@
 
   /* ---------- 虚拟按键 ---------- */
 
-  function drawButtons(ctx, g, pressed, kickCooldown) {
+  function drawButtons(ctx, g, view) {
     var p = g.player;
+    var pressed = view.pressed || {};
+    var skills = view.skills || [];
+    // 冷却扇形通用件：fraction = 剩余冷却比例（1=刚按下，0=就绪）
+    function cdFan(b, fraction, alpha) {
+      if (fraction <= 0) return;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(0,0,0," + alpha + ")";
+      ctx.fill();
+    }
     for (var i = 0; i < BUTTONS.length; i++) {
       var b = BUTTONS[i];
       var on = pressed[b.id];
       var accent = b.id === "kick" ? COL.gold : b.id === "dash" ? COL.dash
         : b.id === "pebble" ? "#cfe8ff" : "#aeb8da";
+      // 手里剑（招式）：飞蝗石按钮换「剑」标
+      var label = b.id === "pebble" && skills.indexOf("shuriken") >= 0 ? "剑" : b.label;
 
       ctx.save();
       ctx.globalAlpha = on ? 0.85 : 0.5;
@@ -606,30 +711,42 @@
       ctx.stroke();
 
       // 踢冷却扇形
-      if (b.id === "kick" && p.kickCd > 0) {
-        ctx.beginPath();
-        ctx.moveTo(b.x, b.y);
-        ctx.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + (p.kickCd / kickCooldown) * Math.PI * 2);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(0,0,0,0.45)";
-        ctx.fill();
-      }
-      // 飞蝗石蓄能扇形（10s 一颗，平时不管用=扇形盖满）
-      if (b.id === "pebble" && p.pebbleCd > 0) {
-        ctx.beginPath();
-        ctx.moveTo(b.x, b.y);
-        ctx.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + (p.pebbleCd / CFG.PEBBLE_CD) * Math.PI * 2);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.fill();
+      if (b.id === "kick") cdFan(b, p.kickCd / view.kickCooldown, 0.45);
+      // 飞蝗石/手里剑蓄能扇形（平时不管用=扇形盖满）
+      if (b.id === "pebble") {
+        var pcd = skills.indexOf("shuriken") >= 0 ? CFG.SHURI_CD : CFG.PEBBLE_CD;
+        cdFan(b, p.pebbleCd / pcd, 0.55);
       }
       ctx.restore();
 
       ctx.fillStyle = on && b.kind === "held" ? "#10162e" : accent;
-      ctx.font = b.font || (b.label.length > 1 ? "600 19px sans-serif" : "bold 24px sans-serif");
+      ctx.font = b.font || (label.length > 1 ? "600 19px sans-serif" : "bold 24px sans-serif");
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(b.label, b.x, b.y + 1);
+      ctx.fillText(label, b.x, b.y + 1);
+    }
+
+    // 瞬身踢：仅解锁后出现（第 6 按钮，「石」正上方）
+    if (skills.indexOf("blinkKick") >= 0) {
+      var bb = BUTTON_BLINK;
+      var bon = pressed.blink;
+      ctx.save();
+      ctx.globalAlpha = bon ? 0.9 : 0.55;
+      ctx.fillStyle = bon ? "#ffe9a8" : "rgba(18,24,51,0.7)";
+      ctx.beginPath();
+      ctx.arc(bb.x, bb.y, bb.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#ffe9a8";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      cdFan(bb, p.blinkCd / CFG.BLINK_CD, 0.55);
+      ctx.fillStyle = "#ffe9a8";
+      ctx.font = bb.font;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(bb.label, bb.x, bb.y + 1);
+      ctx.restore();
     }
   }
 
@@ -651,12 +768,11 @@
     ctx.fillStyle = "#f4ecd8";
     ctx.font = "bold 38px sans-serif";
     ctx.fillText("选 关", W / 2, 96);
-    // 总星数
-    var total = 0;
-    for (var k in progress.stars) total += progress.stars[k];
+    // 总星数（skills.js 统一口径，天花板随关卡数走）
+    var total = skillsMod.totalStars(progress);
     ctx.fillStyle = COL.gold;
     ctx.font = "600 15px sans-serif";
-    ctx.fillText("★ " + total + " / 60", W / 2, 128);
+    ctx.fillText("★ " + total + " / " + core.LEVELS.length * 3, W / 2, 128);
 
     for (var i = 0; i < SELECT_LAYOUT.length; i++) {
       var z = SELECT_LAYOUT[i];
@@ -694,9 +810,91 @@
       ctx.restore();
     }
     ctx.textBaseline = "alphabetic";
+
+    // 招式谱入口胶囊（底部横带：已解锁计数一目了然）
+    var zn = SKILL_ENTRY_ZONE;
+    var unlockedN = skillsMod.unlockedFor(progress).length;
+    ctx.save();
+    ctx.fillStyle = "rgba(18,24,51,0.85)";
+    ctx.strokeStyle = COL.gold;
+    ctx.lineWidth = 2;
+    rr(ctx, zn.x, zn.y, zn.w, zn.h, zn.h / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = COL.gold;
+    ctx.font = "600 18px KaiTi, STKaiti, serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("招 式 谱 · 已悟 " + unlockedN + " / " + skillsMod.SKILL_DEFS.length,
+      zn.x + zn.w / 2, zn.y + zn.h / 2 + 1);
+    ctx.restore();
+
+    ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "rgba(255,255,255,0.5)";
     ctx.font = "12px sans-serif";
-    ctx.fillText("★ 通关　★★ 无伤　★★★ 无伤且无蹩脚踢", W / 2, 726);
+    ctx.fillText("★ 通关　★★ 无伤　★★★ 无伤且无蹩脚踢", W / 2, 742);
+  }
+
+  /* ---------- 招式谱 ---------- */
+
+  // 描述按 9 字断行（卡片宽 130，11px 字两行刚好）
+  function wrapDesc(text) {
+    var lines = [];
+    for (var i = 0; i < text.length; i += 9) lines.push(text.slice(i, i + 9));
+    return lines.slice(0, 3);
+  }
+
+  function drawSkills(ctx, progress) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#f4ecd8";
+    ctx.font = "bold 38px sans-serif";
+    ctx.fillText("招 式 谱", W / 2, 92);
+    ctx.fillStyle = "rgba(244,236,216,0.65)";
+    ctx.font = "14px KaiTi, STKaiti, serif";
+    ctx.fillText("通关章节，自悟新招", W / 2, 122);
+
+    var defs = skillsMod.SKILL_DEFS;
+    for (var i = 0; i < defs.length; i++) {
+      var d = defs[i];
+      var col = i % 3, row = Math.floor(i / 3);
+      var cx = 82 + col * 143, cy = 216 + row * 172;
+      var unlocked = skillsMod.isUnlocked(d, progress);
+      ctx.save();
+      if (!unlocked) ctx.globalAlpha = 0.38;
+      // 卡片
+      ctx.fillStyle = "rgba(18,24,51,0.85)";
+      ctx.strokeStyle = unlocked ? COL.gold : "rgba(255,255,255,0.25)";
+      ctx.lineWidth = unlocked ? 2.4 : 1.6;
+      rr(ctx, cx - 65, cy - 72, 130, 144, 12);
+      ctx.fill();
+      ctx.stroke();
+      // 图标字（圆形徽记）
+      ctx.fillStyle = unlocked ? COL.gold : "rgba(255,255,255,0.3)";
+      ctx.beginPath();
+      ctx.arc(cx, cy - 40, 19, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#10162e";
+      ctx.font = "bold 20px KaiTi, STKaiti, serif";
+      ctx.textBaseline = "middle";
+      ctx.fillText(unlocked ? d.icon : "？", cx, cy - 39);
+      // 名称 + 章节
+      ctx.fillStyle = unlocked ? "#f4ecd8" : "rgba(255,255,255,0.55)";
+      ctx.font = "bold 16px sans-serif";
+      ctx.fillText(unlocked ? d.name : "？？？", cx, cy - 8);
+      ctx.font = "11px sans-serif";
+      ctx.fillStyle = "rgba(127,228,239,0.8)";
+      ctx.fillText(d.chapter, cx, cy + 9);
+      // 效果 / 解锁条件
+      ctx.fillStyle = unlocked ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.45)";
+      ctx.font = "10.5px sans-serif";
+      var lines = wrapDesc(unlocked ? d.desc : skillsMod.condText(d));
+      for (var li = 0; li < lines.length; li++) {
+        ctx.fillText(lines[li], cx, cy + 27 + li * 14);
+      }
+      ctx.restore();
+    }
+    ctx.textBaseline = "alphabetic";
+    drawZoneButton(ctx, SKILLS_ZONES[0], COL.gold, false);
   }
 
   /* ---------- Banner / 覆盖层 ---------- */
@@ -824,8 +1022,9 @@
   }
 
   return {
-    W: W, H: H, BUTTONS: BUTTONS,
+    W: W, H: H, BUTTONS: BUTTONS, BUTTON_BLINK: BUTTON_BLINK,
     SELECT_LAYOUT: SELECT_LAYOUT, VICTORY_ZONES: VICTORY_ZONES, DEATH_ZONES: DEATH_ZONES,
+    SKILL_ENTRY_ZONE: SKILL_ENTRY_ZONE, SKILLS_ZONES: SKILLS_ZONES,
     drawScene: drawScene,
     dashPoseAt: dashPoseAt,
     idlePoseAt: idlePoseAt,

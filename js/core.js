@@ -99,6 +99,18 @@
     // 回旋危球（危球族，踢无效）：第一次越过玩家线不结算，掉头爬升后俯冲二段攻击
     BOOMERANG_SPEED_MUL: 0.6,
     BOOMERANG_CLIMB_Y: 330,
+    // ---- 招式系统（skills.js 名册对应的数值；默认无技能时一律不生效）----
+    KICK_PERFECT_LONG: 0.28, // 揽月式：完美踢判定窗放宽
+    SHURI_CD: 7,             // 手里剑：飞蝗石强化（冷却/速度/伤害/架势）
+    SHURI_HP: 12,
+    SHURI_POST: 10,
+    SHURI_SPEED: 900,
+    SPLASH_RANGE: 90,        // 梨花摆：完美踢顺带弹回的近距范围
+    BLINK_TIME: 0.6,         // 瞬身踢：全程时长（去 0.2s + 回 0.4s）
+    BLINK_STRIKE: 0.2,       // 冲刺段时长（到点出脚）
+    BLINK_CD: 12,
+    BELL_INVULN: 0.6,        // 金钟罩：免崩后的短暂无敌
+    REVIVE_INVULN: 1.0,      // 不倒翁：留血续命后的无敌
   };
 
   // 二十关 = 4 章 × 5 关，每章第 5 关守关（多管血）。
@@ -107,31 +119,33 @@
   //      skin 可选位图皮肤（纯表现层，render 注册了对应图片才生效；缺省=火柴人）
   // 一章纯普通球定型；二章危球识读；三章弧线→分裂→重球逐个登场；四章回旋危球+全混编。
   // 血量五倍制（KICK_HP 同步 ×5，单关节奏与旧七阵一致）
+  // skin=章节原创角色（矢量皮肤来自 vskins.js，nailong 为位图）；
+  // skinScale 体型梯度（同章递增，守关最大）；skinTint="boss" 给守关加配饰。
   var LEVELS = [
-    // 第一章 · 基本功（纯普通球）
-    { sub: "第 1 关", name: "奶龙", skin: "nailong", hp: [600], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46, mix: {} },
-    { sub: "第 2 关", name: "快枪教习", hp: [450], interval: 1.3, ballSpeed: 360, cast: 0.72, comboChance: 0.3, perilChance: 0, drift: 56, mix: {} },
-    { sub: "第 3 关", name: "连珠炮手", hp: [500], interval: 1.15, ballSpeed: 390, cast: 0.66, comboChance: 0.5, perilChance: 0, drift: 64, mix: {} },
-    { sub: "第 4 关", name: "夜行刀客", hp: [550], interval: 1.05, ballSpeed: 420, cast: 0.6, comboChance: 0.5, perilChance: 0, drift: 72, mix: {} },
-    { sub: "守关战", name: "赤甲教头", hp: [480, 400], interval: 0.95, ballSpeed: 450, cast: 0.55, comboChance: 0.55, perilChance: 0, drift: 78, mix: {} },
-    // 第二章 · 危球识读
-    { sub: "第 6 关", name: "红灯信使", hp: [550], interval: 1.1, ballSpeed: 440, cast: 0.6, comboChance: 0.4, perilChance: 0.25, drift: 80, mix: {} },
-    { sub: "第 7 关", name: "危球学徒", hp: [600], interval: 1.0, ballSpeed: 460, cast: 0.56, comboChance: 0.45, perilChance: 0.35, drift: 86, mix: {} },
-    { sub: "第 8 关", name: "双刃婆子", hp: [620], interval: 0.95, ballSpeed: 480, cast: 0.52, comboChance: 0.5, perilChance: 0.4, drift: 90, mix: {} },
-    { sub: "第 9 关", name: "暗影镖师", hp: [650], interval: 0.9, ballSpeed: 500, cast: 0.5, comboChance: 0.55, perilChance: 0.45, drift: 96, mix: {} },
-    { sub: "守关战", name: "危球天师", hp: [550, 450], interval: 0.85, ballSpeed: 520, cast: 0.46, comboChance: 0.55, perilChance: 0.5, drift: 100, mix: {} },
-    // 第三章 · 花式弹反（弧线 → 分裂 → 重球逐个登场）
-    { sub: "第 11 关", name: "弧月书生", hp: [650], interval: 1.0, ballSpeed: 470, cast: 0.55, comboChance: 0.45, perilChance: 0.2, drift: 90, mix: { curve: 0.5 } },
-    { sub: "第 12 关", name: "弯刀胡旋", hp: [700], interval: 0.95, ballSpeed: 490, cast: 0.52, comboChance: 0.5, perilChance: 0.25, drift: 96, mix: { curve: 0.65 } },
-    { sub: "第 13 关", name: "裂帛娘子", hp: [700], interval: 0.95, ballSpeed: 480, cast: 0.52, comboChance: 0.45, perilChance: 0.2, drift: 92, mix: { split: 0.5 } },
-    { sub: "第 14 关", name: "铁锤太岁", hp: [800], interval: 1.05, ballSpeed: 460, cast: 0.6, comboChance: 0.4, perilChance: 0.2, drift: 80, mix: { heavy: 0.55 } },
-    { sub: "守关战", name: "花样双煞", hp: [550, 500], interval: 0.88, ballSpeed: 510, cast: 0.48, comboChance: 0.55, perilChance: 0.3, drift: 100, mix: { curve: 0.3, split: 0.3, heavy: 0.25 } },
-    // 第四章 · 回旋绝杀（回旋危球 + 全混编；peril+mix 总和 ≤0.9 留普通球余量）
-    { sub: "第 16 关", name: "回马枪客", hp: [700], interval: 0.95, ballSpeed: 500, cast: 0.52, comboChance: 0.5, perilChance: 0.15, drift: 100, mix: { boomerang: 0.4 } },
-    { sub: "第 17 关", name: "幻影先生", hp: [750], interval: 0.9, ballSpeed: 520, cast: 0.48, comboChance: 0.55, perilChance: 0.25, drift: 106, mix: { curve: 0.35, boomerang: 0.3 } },
-    { sub: "第 18 关", name: "疾风雷神", hp: [780], interval: 0.85, ballSpeed: 545, cast: 0.46, comboChance: 0.6, perilChance: 0.2, drift: 112, mix: { split: 0.25, heavy: 0.25, boomerang: 0.2 } },
-    { sub: "第 19 关", name: "万象道人", hp: [800], interval: 0.82, ballSpeed: 560, cast: 0.44, comboChance: 0.6, perilChance: 0.15, drift: 118, mix: { curve: 0.2, split: 0.2, heavy: 0.2, boomerang: 0.15 } },
-    { sub: "宗师战", name: "镇场宗师 · 白眉", hp: [550, 480, 420], interval: 0.78, ballSpeed: 580, cast: 0.42, comboChance: 0.65, perilChance: 0.2, drift: 125, mix: { curve: 0.2, split: 0.2, heavy: 0.15, boomerang: 0.15 } },
+    // 第一章 · 基本功（纯普通球）——咕嘎族群（圆滚呆鸟）
+    { sub: "第 1 关", name: "咕嘎仔", skin: "guga", skinScale: 0.85, hp: [600], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46, mix: {} },
+    { sub: "第 2 关", name: "快枪教习", skin: "guga", skinScale: 0.95, hp: [450], interval: 1.3, ballSpeed: 360, cast: 0.72, comboChance: 0.3, perilChance: 0, drift: 56, mix: {} },
+    { sub: "第 3 关", name: "连珠炮手", skin: "guga", skinScale: 1.0, hp: [500], interval: 1.15, ballSpeed: 390, cast: 0.66, comboChance: 0.5, perilChance: 0, drift: 64, mix: {} },
+    { sub: "第 4 关", name: "夜行刀客", skin: "guga", skinScale: 1.05, hp: [550], interval: 1.05, ballSpeed: 420, cast: 0.6, comboChance: 0.5, perilChance: 0, drift: 72, mix: {} },
+    { sub: "守关战", name: "咕嘎大王", skin: "guga", skinScale: 1.18, skinTint: "boss", hp: [480, 400], interval: 0.95, ballSpeed: 450, cast: 0.55, comboChance: 0.55, perilChance: 0, drift: 78, mix: {} },
+    // 第二章 · 危球识读——大将卫兵（玄甲武人）
+    { sub: "第 6 关", name: "红灯信使", skin: "dajiang", skinScale: 0.9, hp: [550], interval: 1.1, ballSpeed: 440, cast: 0.6, comboChance: 0.4, perilChance: 0.25, drift: 80, mix: {} },
+    { sub: "第 7 关", name: "危球学徒", skin: "dajiang", skinScale: 0.95, hp: [600], interval: 1.0, ballSpeed: 460, cast: 0.56, comboChance: 0.45, perilChance: 0.35, drift: 86, mix: {} },
+    { sub: "第 8 关", name: "双刃婆子", skin: "dajiang", skinScale: 1.0, hp: [620], interval: 0.95, ballSpeed: 480, cast: 0.52, comboChance: 0.5, perilChance: 0.4, drift: 90, mix: {} },
+    { sub: "第 9 关", name: "暗影镖师", skin: "dajiang", skinScale: 1.05, hp: [650], interval: 0.9, ballSpeed: 500, cast: 0.5, comboChance: 0.55, perilChance: 0.45, drift: 96, mix: {} },
+    { sub: "守关战", name: "大将", skin: "dajiang", skinScale: 1.18, skinTint: "boss", hp: [550, 450], interval: 0.85, ballSpeed: 520, cast: 0.46, comboChance: 0.55, perilChance: 0.5, drift: 100, mix: {} },
+    // 第三章 · 花式弹反（弧线 → 分裂 → 重球逐个登场）——刀盾兵（斗笠刀盾）
+    { sub: "第 11 关", name: "弧月书生", skin: "daodun", skinScale: 0.9, hp: [650], interval: 1.0, ballSpeed: 470, cast: 0.55, comboChance: 0.45, perilChance: 0.2, drift: 90, mix: { curve: 0.5 } },
+    { sub: "第 12 关", name: "弯刀胡旋", skin: "daodun", skinScale: 0.95, hp: [700], interval: 0.95, ballSpeed: 490, cast: 0.52, comboChance: 0.5, perilChance: 0.25, drift: 96, mix: { curve: 0.65 } },
+    { sub: "第 13 关", name: "裂帛娘子", skin: "daodun", skinScale: 1.0, hp: [700], interval: 0.95, ballSpeed: 480, cast: 0.52, comboChance: 0.45, perilChance: 0.2, drift: 92, mix: { split: 0.5 } },
+    { sub: "第 14 关", name: "铁锤太岁", skin: "daodun", skinScale: 1.05, hp: [800], interval: 1.05, ballSpeed: 460, cast: 0.6, comboChance: 0.4, perilChance: 0.2, drift: 80, mix: { heavy: 0.55 } },
+    { sub: "守关战", name: "刀盾教头", skin: "daodun", skinScale: 1.18, skinTint: "boss", hp: [550, 500], interval: 0.88, ballSpeed: 510, cast: 0.48, comboChance: 0.55, perilChance: 0.3, drift: 100, mix: { curve: 0.3, split: 0.3, heavy: 0.25 } },
+    // 第四章 · 回旋绝杀（回旋危球 + 全混编；peril+mix 总和 ≤0.9 留普通球余量）——奶龙群
+    { sub: "第 16 关", name: "回马枪客", skin: "nailong", skinScale: 0.9, hp: [700], interval: 0.95, ballSpeed: 500, cast: 0.52, comboChance: 0.5, perilChance: 0.15, drift: 100, mix: { boomerang: 0.4 } },
+    { sub: "第 17 关", name: "幻影先生", skin: "nailong", skinScale: 0.95, hp: [750], interval: 0.9, ballSpeed: 520, cast: 0.48, comboChance: 0.55, perilChance: 0.25, drift: 106, mix: { curve: 0.35, boomerang: 0.3 } },
+    { sub: "第 18 关", name: "疾风雷神", skin: "nailong", skinScale: 1.0, hp: [780], interval: 0.85, ballSpeed: 545, cast: 0.46, comboChance: 0.6, perilChance: 0.2, drift: 112, mix: { split: 0.25, heavy: 0.25, boomerang: 0.2 } },
+    { sub: "第 19 关", name: "万象道人", skin: "nailong", skinScale: 1.05, hp: [800], interval: 0.82, ballSpeed: 560, cast: 0.44, comboChance: 0.6, perilChance: 0.15, drift: 118, mix: { curve: 0.2, split: 0.2, heavy: 0.2, boomerang: 0.15 } },
+    { sub: "宗师战", name: "奶龙王", skin: "nailong", skinScale: 1.25, skinTint: "boss", hp: [550, 480, 420], interval: 0.78, ballSpeed: 580, cast: 0.42, comboChance: 0.65, perilChance: 0.2, drift: 125, mix: { curve: 0.2, split: 0.2, heavy: 0.15, boomerang: 0.15 } },
   ];
 
   function mulberry32(seed) {
@@ -173,6 +187,13 @@
       dashPerfect: false,
       dashWatch: null, // 按下时盯住的在飞来球 {b, dist}：躲开它也算闪身成功
       pebbleCd: 0,   // 飞蝗石蓄能计时（0=就绪可发）
+      // ---- 招式系统字段（默认无技能时全部闲置）----
+      dashDoubled: false, // 连闪步：本段闪身已续冲过
+      bellUsed: false,    // 金钟罩：本关已免崩一次
+      reviveUsed: false,  // 不倒翁：本关已续命一次
+      blinkCd: 0,         // 瞬身踢冷却
+      blinkFrom: 0,       // 瞬身踢出发点（回程落点）
+      blinkHit: false,    // 瞬身踢已出脚
     };
   }
 
@@ -187,7 +208,7 @@
 
   function Game(rng) {
     this.rng = rng || Math.random;
-    this.mode = "title"; // title|select|fight|death|victory
+    this.mode = "title"; // title|select|fight|death|victory|skills
     this.time = 0;
     this.waveIndex = -1; // 当前关卡下标（LEVELS）
     this.player = makePlayer();
@@ -200,7 +221,16 @@
     this.shake = 0;
     this.banner = null;
     this.stats = freshStats();
+    this.skills = []; // 已解锁招式 id（main.js 按进度注入；默认空=原始玩法）
   }
+
+  // 招式注入：skills.js 的 unlockedFor(progress) 结果（数组，indexOf 查找，9 条量级足够）
+  Game.prototype.setSkills = function (list) {
+    this.skills = list || [];
+  };
+  Game.prototype.hasSkill = function (id) {
+    return this.skills.indexOf(id) >= 0;
+  };
 
   Game.prototype.start = function () {
     this.startLevel(0);
@@ -225,6 +255,14 @@
     this.mode = "select";
     this.balls = [];
     this.banner = null;
+  };
+
+  // 招式谱：选关界面的子屏，返回即回选关
+  Game.prototype.toSkills = function () {
+    this.mode = "skills";
+  };
+  Game.prototype.backFromSkills = function () {
+    this.mode = "select";
   };
 
   // 死亡后重开本波（友好规则，不回第一波）
@@ -273,8 +311,8 @@
     if (this.mode !== "fight") return;
     var p = this.player;
     if (action === "kick") {
-      // 崩体 / 受伤 / 手舞足蹈中不能踢；冷却内按键被吞掉（不刷新窗口）
-      if (p.state === "break" || p.state === "hurt" || p.state === "flail") return;
+      // 崩体 / 受伤 / 手舞足蹈 / 瞬身途中不能踢；冷却内按键被吞掉（不刷新窗口）
+      if (p.state === "break" || p.state === "hurt" || p.state === "flail" || p.state === "blink") return;
       if (p.kickCd > 0) return;
       p.kickAge = 0;
       p.kickCd = CFG.KICK_COOLDOWN;
@@ -283,18 +321,47 @@
       return;
     }
     if (action === "pebble") {
-      // 飞蝗石：崩体/受伤/手舞足蹈中不能发；冷却中按下被吞（平时不管用）
-      if (p.state === "break" || p.state === "hurt" || p.state === "flail") return;
+      // 飞蝗石（手里剑：冷却更短）：崩体/受伤/手舞足蹈/瞬身途中不能发
+      if (p.state === "break" || p.state === "hurt" || p.state === "flail" || p.state === "blink") return;
       if (p.pebbleCd > 0) return;
-      p.pebbleCd = CFG.PEBBLE_CD;
+      p.pebbleCd = this.hasSkill("shuriken") ? CFG.SHURI_CD : CFG.PEBBLE_CD;
       this.firePebble();
       return;
     }
-    if (action === "dash") {
+    if (action === "blink") {
+      // 瞬身踢（独立按钮）：站稳才可用；冲到敌人面前踢一脚再回原位
+      if (!this.hasSkill("blinkKick")) return;
       if (p.state !== "idle") return;
+      if (p.blinkCd > 0) return;
+      if (!this.enemy || this.enemy.state === "dead") return;
+      p.state = "blink";
+      p.stateT = 0;
+      p.blinkFrom = p.x;
+      p.blinkHit = false;
+      p.invuln = CFG.BLINK_TIME;
+      p.blinkCd = CFG.BLINK_CD; // 起手即计冷却：任何中途打断（如未来新状态顶掉 blink）都不会白嫖无冷却瞬身
+      this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "瞬身踢", "#ffe9a8", 22, 0.7);
+      this.events.push("blink");
+      return;
+    }
+    if (action === "dash") {
+      if (p.state !== "idle") {
+        // 连闪步：闪身途中可再冲一段（每段一次）；只续位移与无敌帧，
+        // 不重判品质（沿用首段判定，防刷新无敌白嫖 Perfect）
+        if (p.state === "dash" && this.hasSkill("doubleDash") && !p.dashDoubled) {
+          p.dashDoubled = true;
+          p.stateT = 0;
+          p.invuln = CFG.DASH_INVULN;
+          var held2 = this.held.left ? -1 : this.held.right ? 1 : 0;
+          p.dashDir = held2 !== 0 ? held2 : this.rollDashDir();
+          this.events.push("dash");
+        }
+        return;
+      }
       p.state = "dash";
       p.stateT = 0;
       p.invuln = CFG.DASH_INVULN;
+      p.dashDoubled = false; // 连闪步：新一段闪身重新给一次续冲机会
       // 按住方向听玩家的；没按方向则花鼓灯式随机左/右闪（不原地顿步）
       var heldDir = this.held.left ? -1 : this.held.right ? 1 : 0;
       p.dashDir = heldDir !== 0 ? heldDir : this.rollDashDir();
@@ -345,8 +412,9 @@
   Game.prototype.scoreDashDodge = function (b) {
     var p = this.player;
     if (!p.dashWatch || p.dashWatch.b !== b || p.dashScored) return;
-    // 崩架势/大招期间不结算（硬直中「赚连击」是语义瑕疵；大招本身就是奖励）
-    if (p.state === "break" || p.state === "flail") { p.dashWatch = null; return; }
+    // 崩架势/大招/瞬身期间不结算（硬直中「赚连击」是语义瑕疵；大招本身就是奖励；
+    // 瞬身途中若结算出连击满会 startFlail 顶掉 blink 态，玩家被晾在中场且 blinkCd 被跳过）
+    if (p.state === "break" || p.state === "flail" || p.state === "blink") { p.dashWatch = null; return; }
     p.dashWatch = null;
     p.dashScored = true;
     this.stats.dashThroughs++;
@@ -358,18 +426,22 @@
     this.bumpCombo("dash");
   };
 
-  // 飞蝗石：朝敌人自射一颗小球，蚊子腿伤害（不涨架势/不打断），踉跄中命中=忍杀
+  // 飞蝗石：朝敌人自射一颗小球，蚊子腿伤害（不涨架势/不打断），踉跄中命中=忍杀。
+  // 手里剑（招式）：速度/伤害/架势全面强化，截球能力不变
   Game.prototype.firePebble = function () {
     var p = this.player, e = this.enemy;
+    var shuri = this.hasSkill("shuriken");
+    var speed = shuri ? CFG.SHURI_SPEED : CFG.PEBBLE_SPEED;
     var dx = e.x - p.x;
     var dy = CFG.ENEMY_Y - (CFG.PLAYER_Y - 26);
     var len = Math.sqrt(dx * dx + dy * dy);
     this.balls.push({
       x: p.x, y: CFG.PLAYER_Y - 26,
-      vx: (dx / len) * CFG.PEBBLE_SPEED, vy: (dy / len) * CFG.PEBBLE_SPEED,
+      vx: (dx / len) * speed, vy: (dy / len) * speed,
       kind: "normal", dir: "up", dead: false, returned: false, pebble: true,
+      shuriken: shuri,
     });
-    this.spawnFloat(p.x, CFG.PLAYER_Y - 120, "飞蝗石", "#cfe8ff", 16, 0.6);
+    this.spawnFloat(p.x, CFG.PLAYER_Y - 120, shuri ? "手里剑" : "飞蝗石", "#cfe8ff", 16, 0.6);
     this.events.push("pebble");
   };
 
@@ -381,7 +453,9 @@
     if (p.state === "flail") return;
     p.comboN = p.comboType === type ? p.comboN + 1 : 1;
     p.comboType = type;
-    if (p.comboN >= CFG.COMBO_NEED) this.startFlail();
+    // 锣鼓催（招式）：连击需求 3→2
+    var need = this.hasSkill("guluo") ? 2 : CFG.COMBO_NEED;
+    if (p.comboN >= need) this.startFlail();
   };
 
   // 蹩脚踢 / 受伤 / 空闪 / 早闪：连击链作废
@@ -559,17 +633,28 @@
     p.kickAnim = Math.max(0, p.kickAnim - dt);
     if (p.kickCd > 0) p.kickCd -= dt;
     if (p.pebbleCd > 0) p.pebbleCd -= dt;
+    if (p.blinkCd > 0) p.blinkCd -= dt;
     if (p.invuln > 0) p.invuln -= dt;
     p.heldDir = this.held.left ? -1 : this.held.right ? 1 : 0;
 
     // 架势满立即崩（优先于本帧架势回复）；大招进行中不会挨打/涨架势，双保险不打断
     if (p.posture >= CFG.MAX_POSTURE && p.state !== "break" && p.state !== "flail") {
-      p.state = "break";
-      p.stateT = 0;
-      p.posture = CFG.MAX_POSTURE;
-      // 全名「狗熊哆嗦毛！」已让给三连击大招，崩架势只配半截「哆嗦毛…」
-      this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "哆嗦毛…", "#ff8a7a", 20, 1.15);
-      this.events.push("break");
+      // 金钟罩（招式）：每关首次架势满不崩——清零架势 + 短暂无敌
+      if (this.hasSkill("bell") && !p.bellUsed) {
+        p.bellUsed = true;
+        p.posture = 0;
+        p.postDelay = CFG.P_POST_DELAY;
+        p.invuln = Math.max(p.invuln, CFG.BELL_INVULN);
+        this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "金钟罩！", "#ffd45e", 22, 1.0);
+        this.events.push("bell");
+      } else {
+        p.state = "break";
+        p.stateT = 0;
+        p.posture = CFG.MAX_POSTURE;
+        // 全名「狗熊哆嗦毛！」已让给三连击大招，崩架势只配半截「哆嗦毛…」
+        this.spawnFloat(p.x, CFG.PLAYER_Y - 104, "哆嗦毛…", "#ff8a7a", 20, 1.15);
+        this.events.push("break");
+      }
     }
     if (p.postDelay > 0) p.postDelay -= dt;
     else if (p.posture > 0 && p.state !== "break") {
@@ -602,6 +687,36 @@
         p.invuln = Math.max(0, CFG.FLAIL_TIME - p.stateT);
         if (p.stateT >= CFG.FLAIL_TIME) { p.invuln = 0; p.state = "idle"; p.stateT = 0; }
         break;
+      case "blink": {
+        // 瞬身踢：0–BLINK_STRIKE 直线冲到敌人正下方，到点出脚（伪球走
+        // resolveReturnHit 全链：伤害/架势/踉跄忍杀），随后直线回原位；全程无敌
+        var be = this.enemy;
+        var strikeT = CFG.BLINK_STRIKE, totalT = CFG.BLINK_TIME;
+        if (p.stateT < strikeT) {
+          var btx = be ? be.x : p.blinkFrom;
+          p.x = p.blinkFrom + (btx - p.blinkFrom) * (p.stateT / strikeT);
+        } else {
+          if (!p.blinkHit && be && be.state !== "dead") {
+            p.blinkHit = true;
+            p.kickAnim = CFG.KICK_ANIM; // 出脚动画（不产生踢球判定窗）
+            this.resolveReturnHit({
+              x: be.x, y: CFG.ENEMY_Y, vx: 0, vy: 0,
+              dir: "up", kind: "normal", blink: true, dead: false,
+            });
+          }
+          var back = Math.min(1, (p.stateT - strikeT) / (totalT - strikeT));
+          var bx2 = be ? be.x : p.blinkFrom;
+          p.x = bx2 + (p.blinkFrom - bx2) * back;
+        }
+        p.invuln = Math.max(0, totalT - p.stateT);
+        if (p.stateT >= totalT) {
+          p.state = "idle";
+          p.stateT = 0;
+          // blinkCd 起手已计（press 处），这里不再重置——冷却从出招瞬间起算
+          p.invuln = 0;
+        }
+        break;
+      }
     }
     p.x = clamp(p.x, CFG.MARGIN, CFG.WORLD_W - CFG.MARGIN);
   };
@@ -876,6 +991,25 @@
     this.events.push("flailBounce");
   };
 
+  // 梨花摆（招式）：完美踢顺带把身边最近一颗同族下行球一起弹回
+  //（危球族踢不动；溅射球半伤、不涨架势，见 resolveReturnHit 的 splash 分支）
+  Game.prototype.splashKick = function (main) {
+    var p = this.player, best = null, bestD = CFG.SPLASH_RANGE;
+    for (var i = 0; i < this.balls.length; i++) {
+      var o = this.balls[i];
+      if (o === main || o.dead || o.dir !== "down") continue;
+      if (o.kind === "peril" || o.kind === "boomerang") continue;
+      var d = Math.abs(o.x - p.x);
+      if (d < bestD) { bestD = d; best = o; }
+    }
+    if (!best) return;
+    this.bounceBallUp(best);
+    best.splash = true;
+    this.spawnRing(best.x, CFG.PLAYER_Y - 20, "#cfe8ff");
+    this.spawnFloat(best.x, CFG.PLAYER_Y - 132, "梨花摆", "#cfe8ff", 18, 0.7);
+    this.events.push("splashKick");
+  };
+
   Game.prototype.resolveIncoming = function (b) {
     var p = this.player;
     var cx = b.x, cy = b.y;
@@ -906,11 +1040,13 @@
       return;
     }
 
-    // 完美踢：金球反弹
-    if (p.state !== "break" && p.kickAge <= CFG.KICK_PERFECT) {
+    // 完美踢：金球反弹（揽月式放宽判定窗；瞬身途中不出脚）
+    var perfectWin = this.hasSkill("lanyue") ? CFG.KICK_PERFECT_LONG : CFG.KICK_PERFECT;
+    if (p.state !== "break" && p.state !== "blink" && p.kickAge <= perfectWin) {
       // 闪身途中球被残留踢窗处理：尽到处置义务（收尾不算空闪），并定下品质供同闪后续穿球复用
       if (p.state === "dash") { p.dashScored = true; this.judgeDashPerfect(b); }
       this.bounceBallUp(b);
+      if (this.hasSkill("lihua")) this.splashKick(b); // 梨花摆：顺带弹回身旁一颗来球
       this.spawnRing(cx, cy, "#ffe985");
       this.spawnSparks(cx, cy, 12, "#ffd98a", 1);
       this.shake = 0.18;
@@ -925,8 +1061,8 @@
 
     b.dead = true;
 
-    // 蹩脚踢：踢偏保命，同时连击链作废
-    if (p.state !== "break" && p.kickAge <= CFG.KICK_TOTAL) {
+    // 蹩脚踢：踢偏保命，同时连击链作废（瞬身途中不出脚）
+    if (p.state !== "break" && p.state !== "blink" && p.kickAge <= CFG.KICK_TOTAL) {
       if (p.state === "dash") { p.dashScored = true; this.judgeDashPerfect(b); } // 同完美踢
       p.posture += CFG.LOWKICK_P_POST;
       p.postDelay = CFG.P_POST_DELAY;
@@ -937,12 +1073,16 @@
       return;
     }
 
-    // 闪身无敌帧穿球：起步已报「闪身步」，这里只给火花+轻音，品质由 scoreDashThrough 判
+    // 闪身无敌帧穿球：起步已报「闪身步」，这里只给火花+轻音，品质由 scoreDashThrough 判。
+    // 仅闪身态进结算——金钟罩/不倒翁/瞬身踢的无敌只挡伤：不进闪身统计、不判品质，
+    // 否则 dashPressX/stateT 是上一闪的残值，会判出假 Perfect（涨连击甚至触发大招打断瞬身）或冤枉断链
     if (p.invuln > 0) {
       this.spawnSparks(cx, cy, 7, "#bcd8ff", 0.6);
-      this.stats.dashThroughs++;
-      this.events.push("dashThrough");
-      this.scoreDashThrough(b);
+      if (p.state === "dash") {
+        this.stats.dashThroughs++;
+        this.events.push("dashThrough");
+        this.scoreDashThrough(b);
+      }
       return;
     }
 
@@ -951,12 +1091,23 @@
     else this.damagePlayer(CFG.E_HP, CFG.HURT_P_POST, false);
   };
 
+  // 架势打满 → 踉跄（完美踢与手里剑共用）
+  Game.prototype.enterStagger = function () {
+    var e = this.enemy;
+    e.posture = CFG.MAX_POSTURE;
+    e.state = "stagger";
+    e.stateT = 0;
+    e.comboLeft = 0;
+    this.banner = { main: "破架势", sub: "再踢一球 · 忍杀", t: 1.4, tmax: 1.4, peril: false };
+    this.events.push("stagger");
+  };
+
   Game.prototype.resolveReturnHit = function (b) {
     var e = this.enemy;
     b.dead = true;
     var cy = CFG.ENEMY_Y;
 
-    // 踉跄中：忍杀，直接清空当前这管血（飞蝗石也算——10s 蓄能攒的就是这一下）
+    // 踉跄中：忍杀，直接清空当前这管血（飞蝗石/瞬身踢也算——蓄的就是这一下）
     if (e.state === "stagger") {
       e.hp = 0;
       this.spawnSparks(e.x, cy, 24, "#d4302f", 1.4);
@@ -969,12 +1120,27 @@
       return;
     }
 
-    // 飞蝗石：蚊子腿伤害——不涨架势、不打断敌人动作（残血可收头）
+    // 飞蝗石：蚊子腿伤害——不涨架势、不打断敌人动作（残血可收头）。
+    // 手里剑（招式）：伤害 5→12 且命中 +10 架势（满架势力可致踉跄）
     if (b.pebble) {
-      e.hp -= CFG.PEBBLE_HP;
+      e.hp -= b.shuriken ? CFG.SHURI_HP : CFG.PEBBLE_HP;
       this.stats.pebbleHits++;
       this.spawnSparks(b.x, cy, 5, "#cfe8ff", 0.5);
       this.events.push("pebbleHit");
+      if (e.hp <= 0) { e.hp = 0; this.killNode(); return; }
+      if (b.shuriken) {
+        e.posture += CFG.SHURI_POST;
+        e.postDelay = CFG.E_POST_DELAY;
+        if (e.posture >= CFG.MAX_POSTURE) this.enterStagger();
+      }
+      return;
+    }
+
+    // 梨花摆溅射球：半伤、不涨架势、不打断（白捡的便宜不能放大）
+    if (b.splash) {
+      e.hp -= Math.round((b.kind === "heavy" ? CFG.HEAVY_KICK_HP : CFG.KICK_HP) / 2);
+      this.spawnSparks(b.x, cy, 7, "#cfe8ff", 0.7);
+      this.events.push("splashHit");
       if (e.hp <= 0) { e.hp = 0; this.killNode(); }
       return;
     }
@@ -983,21 +1149,16 @@
     e.hp -= b.flail ? CFG.FLAIL_KICK_HP : (b.kind === "heavy" ? CFG.HEAVY_KICK_HP : CFG.KICK_HP);
     e.posture += CFG.PERFECT_E_POST;
     e.postDelay = CFG.E_POST_DELAY;
-    this.stats.returnHits++;
+    if (!b.blink) this.stats.returnHits++; // 瞬身踢不占用「完美反弹命中」统计
     this.spawnSparks(b.x, cy, 10, "#ffd98a", 0.9);
     this.shake = 0.2;
-    this.events.push("returnHit");
+    this.events.push(b.blink ? "blinkHit" : "returnHit");
 
     if (e.hp <= 0) {
       e.hp = 0;
       this.killNode();
     } else if (e.posture >= CFG.MAX_POSTURE) {
-      e.posture = CFG.MAX_POSTURE;
-      e.state = "stagger";
-      e.stateT = 0;
-      e.comboLeft = 0;
-      this.banner = { main: "破架势", sub: "再踢一球 · 忍杀", t: 1.4, tmax: 1.4, peril: false };
-      this.events.push("stagger");
+      this.enterStagger();
     } else {
       e.state = "hurt";
       e.stateT = 0;
@@ -1011,6 +1172,14 @@
     p.dashWatch = null; // 盯球闪身作废：球没躲开
     p.hp -= hpDmg;
     this.stats.damageTaken += hpDmg; // 三星评价（无伤）依据
+    // 不倒翁（招式）：每关首次致命伤留 1 血 + 1s 无敌（掉血已计，三星照常失去）
+    if (p.hp <= 0 && this.hasSkill("revive") && !p.reviveUsed) {
+      p.reviveUsed = true;
+      p.hp = 1;
+      p.invuln = Math.max(p.invuln, CFG.REVIVE_INVULN);
+      this.spawnFloat(p.x, CFG.PLAYER_Y - 130, "不倒翁！", "#7fe4ef", 24, 1.2);
+      this.events.push("revive");
+    }
     p.posture += postDmg;
     p.postDelay = CFG.P_POST_DELAY;
     if (p.state !== "break") {

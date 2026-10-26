@@ -311,6 +311,34 @@
           tone(150, 0.5, { type: "triangle", freq2: 70, vol: 0.26 });
           noise(0.4, { cutoff: 900, vol: 0.22 });
           break;
+        /* ---- 招式系统 ---- */
+        case "bell":
+          // 金钟罩：一记沉钟（低频正弦长衰减 + 高频泛音点）
+          tone(98, 0.8, { type: "sine", freq2: 60, vol: 0.24 });
+          tone(784, 0.3, { type: "sine", vol: 0.08, delay: 0.01 });
+          break;
+        case "revive":
+          // 不倒翁续命：两记上挑木鱼，晃而不倒
+          tone(660, 0.1, { type: "triangle", vol: 0.16 });
+          tone(880, 0.14, { type: "triangle", vol: 0.14, delay: 0.11 });
+          break;
+        case "blink":
+          // 瞬身踢起步：比闪身更急的破空（上扫锯齿 + 高频噪）
+          noise(0.14, { cutoff: 3600, vol: 0.12 });
+          tone(520, 0.13, { type: "sawtooth", freq2: 1240, vol: 0.07 });
+          break;
+        case "blinkHit":
+          // 瞬身踢命中：闷掌 + 脆响（区别于 returnHit 的金球反弹）
+          tone(240, 0.12, { type: "triangle", freq2: 110, vol: 0.2 });
+          noise(0.07, { cutoff: 3400, vol: 0.12 });
+          break;
+        case "splashKick":
+          // 梨花摆溅射：轻巧双点（副球被带飞）
+          tone(980, 0.08, { type: "sine", freq2: 1320, vol: 0.1 });
+          break;
+        case "splashHit":
+          tone(760, 0.09, { type: "triangle", vol: 0.1 });
+          break;
         case "wave": tone(95, 0.34, { type: "sine", freq2: 60, vol: 0.24 }); break;
         case "victory":
           MELODY.forEach(function (f, i) { tone(f, 0.22, { type: "triangle", vol: 0.16, delay: i * 0.13 }); });

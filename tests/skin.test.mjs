@@ -19,11 +19,20 @@ const nailongSet = () => ({
 
 /* ---------- 关卡配表 ---------- */
 
-test("第 1 关是奶龙皮肤、名为「奶龙」；其余 19 关仍是火柴人（无 skin）", () => {
-  assert.equal(LEVELS[0].skin, "nailong");
-  assert.equal(LEVELS[0].name, "奶龙");
-  for (let i = 1; i < LEVELS.length; i++) {
-    assert.equal(LEVELS[i].skin, undefined, `第 ${i + 1} 关不该有皮肤`);
+test("二十关全配皮肤：一章咕嘎/二章大将/三章刀盾/四章奶龙，守关带体型梯度与 boss 配饰", () => {
+  const byChapter = ["guga", "dajiang", "daodun", "nailong"];
+  for (let i = 0; i < LEVELS.length; i++) {
+    const ch = Math.floor(i / 5);
+    assert.equal(LEVELS[i].skin, byChapter[ch], `第 ${i + 1} 关皮肤应为 ${byChapter[ch]}`);
+    assert.ok(LEVELS[i].skinScale >= 0.8 && LEVELS[i].skinScale <= 1.3, `第 ${i + 1} 关体型梯度合法`);
+  }
+  assert.equal(LEVELS[0].name, "咕嘎仔");
+  assert.equal(LEVELS[4].name, "咕嘎大王");
+  assert.equal(LEVELS[9].name, "大将");
+  assert.equal(LEVELS[14].name, "刀盾教头");
+  assert.equal(LEVELS[19].name, "奶龙王");
+  for (const bossIdx of [4, 9, 14, 19]) {
+    assert.equal(LEVELS[bossIdx].skinTint, "boss", `第 ${bossIdx + 1} 关守关应有 boss 配饰`);
   }
 });
 
@@ -106,21 +115,29 @@ function fightView() {
   };
 }
 
-test("drawScene：第一关注册了奶龙图则走 drawImage，不再画火柴人躯干", () => {
-  skins.registerSkin("nailong", nailongSet());
+test("drawScene：矢量皮肤关（第 1 关咕嘎）零 drawImage、不走火柴人躯干", () => {
   const g = new Game();
   g.startLevel(0);
   const { ctx, calls } = recordingCtx();
   R.drawScene(ctx, g, fightView());
-  assert.ok(calls.drawImage.length >= 1, "应用位图皮肤");
-  assert.equal(calls.drawImage[0][0].width >= 0, true);
+  assert.equal(calls.drawImage.length, 0, "矢量皮肤不应出现位图");
 });
 
-test("drawScene：未注册皮肤的关卡（第 2 关）零 drawImage，火柴人路径不回归", () => {
-  const g = new Game();
-  g.startLevel(1);
-  const { ctx, calls } = recordingCtx();
-  R.drawScene(ctx, g, fightView());
-  assert.equal(calls.drawImage.length, 0, "火柴人关卡不应出现位图");
-  assert.ok(calls.strokeCount >= 3, "火柴人靠 stroke 画躯干四肢");
+test("drawScene：四章奶龙关（第 16 关）注册了奶龙图则走 drawImage；奶龙王（20 关）同路径带王冠", () => {
+  skins.registerSkin("nailong", nailongSet());
+  for (const idx of [15, 19]) {
+    const g = new Game();
+    g.startLevel(idx);
+    const { ctx, calls } = recordingCtx();
+    R.drawScene(ctx, g, fightView());
+    assert.ok(calls.drawImage.length >= 1, `第 ${idx + 1} 关应用位图皮肤`);
+  }
+});
+
+test("矢量皮肤永远就绪（无需注册图片）；未知皮肤仍回退 false", () => {
+  const { ctx } = recordingCtx();
+  assert.equal(skins.drawSkinFigure(ctx, "guga", "idle", 225, 168, { pose: {} }), true);
+  assert.equal(skins.drawSkinFigure(ctx, "dajiang", "telegraph", 225, 168, { pose: {} }), true);
+  assert.equal(skins.drawSkinFigure(ctx, "daodun", "idle", 225, 168, { pose: {} }, { scale: 1.18, tint: "boss" }), true);
+  assert.equal(skins.drawSkinFigure(ctx, "nobody", "idle", 225, 168, { pose: {} }), false);
 });
