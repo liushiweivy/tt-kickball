@@ -5,9 +5,9 @@
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports)
-    module.exports = factory(require("./core.js"), require("./poses.js"));
-  else root.KickballRender = factory(root.Kickball, root.KickballPoses);
-})(typeof self !== "undefined" ? self : this, function (core, poses) {
+    module.exports = factory(require("./core.js"), require("./poses.js"), require("./skins.js"));
+  else root.KickballRender = factory(root.Kickball, root.KickballPoses, root.KickballSkins);
+})(typeof self !== "undefined" ? self : this, function (core, poses, skins) {
   "use strict";
 
   var telegraphBeat = core.telegraphBeat;
@@ -407,9 +407,13 @@
     ctx.translate(x, y);
     ctx.rotate(ep.lean);
     ctx.translate(-x, -y);
-    var enemyOpt = poseOpt(ep.pose, base);
-    enemyOpt.scale = 1.12;
-    stick(ctx, x, y, enemyOpt);
+    // 位图皮肤（奶龙等）：图片就绪则替掉火柴人；未就绪/无皮肤回退 stick。
+    // 投影、lean 后仰/倒地、蓄力球/鼓灯/危字、踉跄星星、死亡淡出都在外层共用。
+    if (!skins.drawSkinFigure(ctx, e.wave.skin, e.state, x, y, ep)) {
+      var enemyOpt = poseOpt(ep.pose, base);
+      enemyOpt.scale = 1.12;
+      stick(ctx, x, y, enemyOpt);
+    }
     ctx.restore();
 
     // 蓄力中的球（举在手上）+ 鼓点指示灯 + 危字警告
@@ -830,5 +834,6 @@
     breakPoseAt: breakPoseAt,
     flailPoseAt: flailPoseAt,
     enemyPoseAt: enemyPoseAt,
+    registerSkin: skins.registerSkin,
   };
 });

@@ -18,6 +18,28 @@ var audio = audioMod.createAudio();
 // 平台对象：抖音 tt 优先，兼容微信 wx（浏览器 harness 会注入 tt shim）
 var api = (typeof tt !== "undefined" && tt) || (typeof wx !== "undefined" && wx) || null;
 
+/* ---------- 敌人位图皮肤（异步加载；未解码前 render 自动回退火柴人） ---------- */
+
+function loadSkins() {
+  if (!api.createImage) return;
+  var list = {
+    idle: "assets/img/nailong-idle.png",
+    cast: "assets/img/nailong-cast.png",
+    hurt: "assets/img/nailong-hurt.png",
+    rise: "assets/img/nailong-rise.png",
+  };
+  var map = {};
+  try {
+    Object.keys(list).forEach(function (k) {
+      var img = api.createImage();
+      img.src = list[k];
+      map[k] = img;
+    });
+    renderMod.registerSkin("nailong", map);
+  } catch (e) { /* 皮肤失败不影响游戏：火柴人兜底 */ }
+}
+loadSkins();
+
 // getWindowInfo 为新 API，旧基础库回退 getSystemInfoSync
 var sysInfo = api.getWindowInfo ? api.getWindowInfo() : api.getSystemInfoSync();
 var dpr = sysInfo.pixelRatio || 1;
@@ -244,6 +266,7 @@ requestAnimationFrame(frame);
 if (typeof globalThis !== "undefined") {
   globalThis.__kickball = {
     game: game, CFG: core.CFG, LEVELS: core.LEVELS, audio: audio,
+    render: renderMod, // CDP/调试：直接调 drawScene 截帧
     getProgress: function () { return progress; },
   };
 }

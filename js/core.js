@@ -104,11 +104,12 @@
   // 二十关 = 4 章 × 5 关，每章第 5 关守关（多管血）。
   // 字段：interval 节奏/ballSpeed 球速/cast 预警/comboChance 连射/perilChance 危球/drift 横漂
   //      mix 新球种混入率 {curve 弧线/split 分裂/heavy 重球/boomerang 回旋危球}
+  //      skin 可选位图皮肤（纯表现层，render 注册了对应图片才生效；缺省=火柴人）
   // 一章纯普通球定型；二章危球识读；三章弧线→分裂→重球逐个登场；四章回旋危球+全混编。
   // 血量五倍制（KICK_HP 同步 ×5，单关节奏与旧七阵一致）
   var LEVELS = [
     // 第一章 · 基本功（纯普通球）
-    { sub: "第 1 关", name: "巡场武生", hp: [600], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46, mix: {} },
+    { sub: "第 1 关", name: "奶龙", skin: "nailong", hp: [600], interval: 1.5, ballSpeed: 320, cast: 0.8, comboChance: 0, perilChance: 0, drift: 46, mix: {} },
     { sub: "第 2 关", name: "快枪教习", hp: [450], interval: 1.3, ballSpeed: 360, cast: 0.72, comboChance: 0.3, perilChance: 0, drift: 56, mix: {} },
     { sub: "第 3 关", name: "连珠炮手", hp: [500], interval: 1.15, ballSpeed: 390, cast: 0.66, comboChance: 0.5, perilChance: 0, drift: 64, mix: {} },
     { sub: "第 4 关", name: "夜行刀客", hp: [550], interval: 1.05, ballSpeed: 420, cast: 0.6, comboChance: 0.5, perilChance: 0, drift: 72, mix: {} },

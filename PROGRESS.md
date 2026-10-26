@@ -351,3 +351,15 @@ render-only，core.js 零改动。起因：除闪身（上一轮返工）外，�
 - **TDD**：新增 levels.test.mjs（配表约束/startLevel/三星/recordClear/四球语义/混编可抽齐）；core.test WAVES→LEVELS 全换、flail 定格断言改 victory、「敌人发球」改逐帧轮询（chooseAttack 必消耗 rng 致流水偏移）；balance.test 重写——skilled 20 关 ×4 种子逐关全通、mashKick 断言移到 Lv17、回旋危球关站桩必死 skilled 全过。双端各 **107/107**
 - **真机**：新 tools/cdp-levels.mjs（无头 Edge 9333 + 8821）——选关界面截图（注入 unlocked:7 样本）、抽 1/13/14/16/20 五关 skilled bot 每帧真实 drawScene 全 victory、0 render error（lv16 回旋危球关 ~90-115s 仅 1 星，明显更难符合设计；lv20 全混编四种新球齐出）；选关布局经两轮截图目检修撞行
 - **音效**：curveFire/splitFire/splitPop/heavyFire/boomerangFire/boomerangTurn/boomerangDive 七事件补齐
+
+## 2026-10-26（十八）第 1 关对手换奶龙位图皮肤（双端 113 测）
+
+- **需求**：「闪身步第一关用奶龙形象做对手」——纯视觉换皮，玩法/判定/血量/球种零改动；第 1 关名「巡场武生」改「奶龙」（横幅「第 1 关 · 奶龙」+ 选关节点同步），其余 19 关保持火柴人
+- **素材**：奶龙桌宠项目 `E:\1workspace\nailong-pet\sprites` 的 192×208 透底 PNG——waiting→nailong-idle、waving→nailong-cast（抬手蓄力）、running-left→nailong-hurt（hurt/stagger 共用）、jumping→nailong-rise；新写 `tools/make_nailong_assets.py`（Python311+PIL/numpy/scipy）：alpha>8 裁 bbox、脚底贴输出底边；jumping 烘焙灰地影用「低饱和(sat<45)且高亮(mx>200)的连通分量、触及 y≥200 即删」去掉 549px（游戏内 drawShadow 另画动态投影）；裁后 96–127 宽 ×191–198 高
+- **皮肤层** `js/skins.js`（新 UMD，无平台依赖可 Node require）：`SKIN_CONF.nailong={h:118, sprites:{状态→图键}}` + `registerSkin(name,imgMap)`（平台入口注入，可热替换）+ `drawSkinFigure(ctx,name,state,x,y,ep)`；锚点=脚底中心 (x,168)，用 `ep.pose.crouch` 绕脚底压扁（sy∈[0.72,1]，横向 0.45 系数胖补偿）、`bodyLift` 整体微浮；**图未就绪（img.width=0）/未注册/未知皮肤一律返回 false**，render 回退火柴人
+- **render.js**：UMD factory 加 require ./skins.js；drawEnemy 现有 translate/rotate(lean)/globalAlpha 包裹内先试皮肤、false 才 stick（scale 1.12）；投影、蓄力球/鼓灯/危字、踉跄星星、死亡绕脚底后倒（lean -1.45rad）+淡出全部在外层共用，零改动；导出 registerSkin
+- **入口** main.js（双端各维护）：启动后 loadSkins() 用 api.createImage/wx.createImage 异步加载 4 张包内 `assets/img/nailong-*.png`，try/catch 静默失败→火柴人兜底，绝不出帧循环；tt 多 `if(!api.createImage)return` 守卫
+- **harness shim**：tt createImage 包相对路径在 /harness/ 页面会解析成 /harness/assets/（404），shim 用 Object.defineProperty 重写 img.src 把 `assets/..` 重写到站点根 `/assets/..`（真机包根不受影响）
+- **TDD**：新增 skin.test.mjs 6 例（配表仅 LEVELS[0] 有 skin 且名「奶龙」；三路径回退 false；六状态+伪状态选图、脚底中心锚定；crouch 压扁/bodyLift 上移；drawScene 第1关走 drawImage、第2关零 drawImage 且火柴人 stroke≥3）；recordingCtx 用 Proxy 兜底全部 ctx 方法，补 createRadialGradient（drawBackdrop 用）。双端各 **113/113**
+- **真机尺寸目检**：tools/cdp-skins.mjs（无头 Edge 9333 + 8821，冻 rAF 手动 drawScene）截 8 帧：idle/telegraph/hurt/stagger/rise/dead/选关/第2关对照；坑=冻 rAF 的 headless 解码慢，等待须 2500ms（1000ms 时图未就绪全回退火柴人）；倒下帧奶龙横在城楼台上
+- **微信送审**：6 张效果图（六宫格 nailong-effects.png 拼图+5 关键帧）经 wechat-claude-bridge/tools/send_self_images.py（venv，CF_DIB 剪贴板+UIA 头像进 simple 自聊窗）发送成功

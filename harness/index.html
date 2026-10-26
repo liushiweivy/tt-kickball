@@ -88,6 +88,17 @@ const startH = [], endH = [], cancelH = [], showH = [], hideH = [];
 globalThis.tt = {
   getSystemInfoSync: () => ({ windowWidth: 450, windowHeight: 800, pixelRatio: 1 }),
   createCanvas: () => canvas,
+  // 敌人皮肤位图：真机包里 src="assets/.." 相对包根；harness 页面在 /harness/ 下，
+  // 浏览器会解析成 /harness/assets/..（404），这里把包路径重写到项目根
+  createImage: () => {
+    const img = new Image();
+    Object.defineProperty(img, "src", {
+      set(v) { this.setAttribute("src", "/" + String(v).replace(/^\/+/, "")); },
+      get() { return this.getAttribute("src"); },
+      configurable: true,
+    });
+    return img;
+  },
   onTouchStart: h => startH.push(h),
   onTouchEnd: h => endH.push(h),
   onTouchCancel: h => cancelH.push(h),
